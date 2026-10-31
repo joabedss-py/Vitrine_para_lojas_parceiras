@@ -1,17 +1,20 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  decimal,
+  index,
+  int,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
 /**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
+ * Core user table backing the Manus OAuth flow and application permissions.
  */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -25,4 +28,26 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/** Public catalog items and their private editor-managed affiliate destinations. */
+export const products = mysqlTable(
+  "products",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    title: varchar("title", { length: 180 }).notNull(),
+    description: text("description").notNull(),
+    category: varchar("category", { length: 80 }).notNull().default("Geral"),
+    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    imageUrl: text("imageUrl").notNull(),
+    affiliateUrl: text("affiliateUrl").notNull(),
+    isActive: boolean("isActive").notNull().default(true),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => ({
+    categoryIdx: index("products_category_idx").on(table.category),
+    activeIdx: index("products_active_idx").on(table.isActive),
+  }),
+);
+
+export type Product = typeof products.$inferSelect;
+export type InsertProduct = typeof products.$inferInsert;

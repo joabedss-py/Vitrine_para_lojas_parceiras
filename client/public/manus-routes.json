@@ -1,0 +1,1 @@
+{"routes":[{"path":"/","title":"Vitrine"},{"path":"/produto/:id","title":"Detalhes do produto"},{"path":"/admin","title":"Administração do catálogo"}]}
