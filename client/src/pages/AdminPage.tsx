@@ -30,6 +30,43 @@ type ProductForm = {
   isActive: boolean;
 };
 
+const descriptionEditorFontFamilies = ["Cascadia Mono", "Consolas", "Courier New"] as const;
+const descriptionEditorFontSizes = [12, 13, 14, 16] as const;
+type DescriptionEditorFontFamily = typeof descriptionEditorFontFamilies[number];
+type DescriptionEditorFontSize = typeof descriptionEditorFontSizes[number];
+type DescriptionEditorSettings = {
+  fontFamily: DescriptionEditorFontFamily;
+  fontSize: DescriptionEditorFontSize;
+  wordWrap: boolean;
+};
+
+const defaultDescriptionEditorSettings: DescriptionEditorSettings = {
+  fontFamily: "Consolas",
+  fontSize: 13,
+  wordWrap: true,
+};
+const descriptionEditorSettingsKey = "vitrineml-description-editor-settings";
+
+function loadDescriptionEditorSettings(): DescriptionEditorSettings {
+  if (typeof window === "undefined") return defaultDescriptionEditorSettings;
+  try {
+    const saved = window.localStorage.getItem(descriptionEditorSettingsKey);
+    if (!saved) return defaultDescriptionEditorSettings;
+    const parsed = JSON.parse(saved) as Partial<DescriptionEditorSettings>;
+    return {
+      fontFamily: descriptionEditorFontFamilies.includes(parsed.fontFamily as DescriptionEditorFontFamily)
+        ? parsed.fontFamily as DescriptionEditorFontFamily
+        : defaultDescriptionEditorSettings.fontFamily,
+      fontSize: descriptionEditorFontSizes.includes(parsed.fontSize as DescriptionEditorFontSize)
+        ? parsed.fontSize as DescriptionEditorFontSize
+        : defaultDescriptionEditorSettings.fontSize,
+      wordWrap: typeof parsed.wordWrap === "boolean" ? parsed.wordWrap : defaultDescriptionEditorSettings.wordWrap,
+    };
+  } catch {
+    return defaultDescriptionEditorSettings;
+  }
+}
+
 const emptyForm: ProductForm = {
   title: "",
   description: "",
@@ -119,10 +156,20 @@ export default function AdminPage() {
   const [notice, setNotice] = useState("");
   const [loginError, setLoginError] = useState("");
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const [descriptionEditorSettings, setDescriptionEditorSettings] = useState(loadDescriptionEditorSettings);
+  const [descriptionCursor, setDescriptionCursor] = useState({ line: 1, column: 1 });
 
   useEffect(() => {
     if (imagePreview.startsWith("blob:")) return () => URL.revokeObjectURL(imagePreview);
   }, [imagePreview]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(descriptionEditorSettingsKey, JSON.stringify(descriptionEditorSettings));
+    } catch {
+      // Editor preferences are optional; continue working when browser storage is unavailable.
+    }
+  }, [descriptionEditorSettings]);
 
   useEffect(() => {
     const googleStatus = new URLSearchParams(window.location.search).get("google");
@@ -186,6 +233,17 @@ export default function AdminPage() {
     setImagePreview("");
     setFormError("");
     setNotice("");
+    setDescriptionCursor({ line: 1, column: 1 });
+  }
+
+  function updateDescriptionCursor(textarea = descriptionRef.current) {
+    if (!textarea) return;
+    const beforeCursor = textarea.value.slice(0, textarea.selectionStart);
+    const lastLineBreak = beforeCursor.lastIndexOf("\n");
+    setDescriptionCursor({
+      line: beforeCursor.split("\n").length,
+      column: beforeCursor.length - lastLineBreak,
+    });
   }
 
   function changeDescriptionIndent(direction: IndentDirection) {
@@ -208,6 +266,7 @@ export default function AdminPage() {
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(adjusted.selectionStart, adjusted.selectionEnd);
+      updateDescriptionCursor(textarea);
     });
   }
 
@@ -392,12 +451,57 @@ export default function AdminPage() {
               <div className="form-field"><label htmlFor="product-title">Título do produto</label><input id="product-title" required maxLength={180} value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Fone sem fio Bluetooth" /></div>
               <div className="form-field">
                 <label htmlFor="product-description">Descrição e detalhes</label>
-                <div className="description-indent-tools" role="group" aria-label="Formatação de recuo da descrição">
-                  <button className="small-button" type="button" onClick={() => changeDescriptionIndent("indent")}>Recuar linhas</button>
-                  <button className="small-button" type="button" onClick={() => changeDescriptionIndent("outdent")}>Remover recuo</button>
-                  <span className="form-hint">Use os botões nas linhas selecionadas (2 espaços).</span>
+                <div className="description-editor">
+                  <div className="description-editor-toolbar" role="toolbar" aria-label="Configurações do editor de descrição">
+                    <div className="description-editor-setting">
+                      <label htmlFor="description-editor-font">Fonte</label>
+                      <select id="description-editor-font" className="description-editor-control" value={descriptionEditorSettings.fontFamily} onChange={event => setDescriptionEditorSettings(current => ({ ...current, fontFamily: event.target.value as DescriptionEditorFontFamily }))}>
+                        <option value="Cascadia Mono">Cascadia Mono</option>
+                        <option value="Consolas">Consolas</option>
+                        <option value="Courier New">Courier New</option>
+                      </select>
+                    </div>
+                    <div className="description-editor-setting">
+                      <label htmlFor="description-editor-size">Tamanho</label>
+                      <select id="description-editor-size" className="description-editor-control" value={descriptionEditorSettings.fontSize} onChange={event => setDescriptionEditorSettings(current => ({ ...current, fontSize: Number(event.target.value) as DescriptionEditorFontSize }))}>
+                        {descriptionEditorFontSizes.map(size => <option key={size} value={size}>{size} px</option>)}
+                      </select>
+                    </div>
+                    <label className="description-editor-wrap"><input type="checkbox" checked={descriptionEditorSettings.wordWrap} onChange={event => setDescriptionEditorSettings(current => ({ ...current, wordWrap: event.target.checked }))} /> Quebra automática</label>
+                  </div>
+                  <div className="description-indent-tools" role="group" aria-label="Indentação da descrição">
+                    <button className="small-button" type="button" onClick={() => changeDescriptionIndent("indent")}>Recuar linhas</button>
+                    <button className="small-button" type="button" onClick={() => changeDescriptionIndent("outdent")}>Remover recuo</button>
+                    <span className="form-hint">Aplique às linhas selecionadas; cada recuo usa 2 espaços.</span>
+                  </div>
+                  <textarea
+                    ref={descriptionRef}
+                    className="description-notepad-textarea"
+                    id="product-description"
+                    required
+                    maxLength={6000}
+                    value={form.description}
+                    wrap={descriptionEditorSettings.wordWrap ? "soft" : "off"}
+                    style={{
+                      fontFamily: descriptionEditorSettings.fontFamily,
+                      fontSize: `${descriptionEditorSettings.fontSize}px`,
+                      whiteSpace: descriptionEditorSettings.wordWrap ? "pre-wrap" : "pre",
+                    }}
+                    onChange={event => {
+                      setForm(current => ({ ...current, description: event.target.value }));
+                      updateDescriptionCursor(event.currentTarget);
+                    }}
+                    onSelect={event => updateDescriptionCursor(event.currentTarget)}
+                    onKeyUp={event => updateDescriptionCursor(event.currentTarget)}
+                    onClick={event => updateDescriptionCursor(event.currentTarget)}
+                    placeholder="Conte o que vale a pena saber sobre este produto."
+                    aria-describedby="description-editor-status"
+                  />
+                  <div className="description-editor-statusbar" id="description-editor-status" role="status" aria-live="polite">
+                    <span>Linha {descriptionCursor.line}, coluna {descriptionCursor.column}</span>
+                    <span>{form.description.length} / 6.000 caracteres</span>
+                  </div>
                 </div>
-                <textarea ref={descriptionRef} id="product-description" required maxLength={6000} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} placeholder="Conte o que vale a pena saber sobre este produto." />
               </div>
               <div className="form-field"><label htmlFor="product-category">Categoria</label><input id="product-category" required maxLength={80} value={form.category} onChange={event => setForm({ ...form, category: event.target.value })} placeholder="Ex.: Casa, tecnologia, beleza" /></div>
               <div className="form-field"><label htmlFor="product-store">Loja/vendedor (opcional)</label><input id="product-store" maxLength={120} value={form.storeName} onChange={event => setForm({ ...form, storeName: event.target.value })} placeholder="Ex.: TNT Info, Amazon, outra loja" /></div>

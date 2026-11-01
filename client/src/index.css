@@ -195,10 +195,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .pricing-form-grid .form-field input, .pricing-form-grid .form-field select { width: 100%; min-width: 0; height: 42px; min-height: 42px; }
 .card-calculation-preview { margin: 0; padding: 10px 12px; border: 1px solid #dbe8de; border-radius: 7px; background: #f1f7f2; color: #536d5a; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
 .card-calculation-preview strong { color: #2c6340; }
+.description-editor { display: grid; gap: 7px; }
+.description-editor-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px 14px; padding: 9px 10px; border: 1px solid #e5e1da; border-radius: 7px 7px 0 0; background: #f5f4f0; }
+.description-editor-setting { display: grid; gap: 4px; }
+.description-editor-setting label { color: #6c777d; font-size: 10px; font-weight: 600; }
+.description-editor-control { min-height: 30px; padding: 4px 24px 4px 7px; border: 1px solid #e0dcd4; border-radius: 5px; background: #fff; color: var(--foreground); font-size: 11px; }
+.description-editor-wrap { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; color: #6c777d; font-size: 11px; font-weight: 500; }
+.description-editor-wrap input { accent-color: var(--accent); }
 .description-indent-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
 .description-indent-tools .form-hint { flex: 1 1 180px; }
 .form-field input, .form-field textarea, .form-field select { width: 100%; min-height: 42px; padding: 10px 11px; border: 1px solid #e2e0db; border-radius: 7px; background: #fff; color: var(--foreground); font-size: 12px; }
 .form-field textarea { min-height: 98px; resize: vertical; line-height: 1.55; }
+.form-field textarea.description-notepad-textarea { min-height: 220px; padding: 13px 14px; border-radius: 0 0 7px 7px; background: #fff; line-height: 1.65; tab-size: 2; }
+.form-field textarea.description-notepad-textarea[wrap="off"] { overflow-x: auto; }
+.description-editor-statusbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 6px 9px; border: 1px solid #e9e6e0; border-radius: 5px; background: #faf9f6; color: #7b8385; font-family: "DM Sans", sans-serif; font-size: 10px; font-variant-numeric: tabular-nums; }
 .form-field input[type="file"] { padding: 8px; background: #faf9f6; }
 .form-field input::placeholder, .form-field textarea::placeholder { color: #a0a4a3; }
 .form-hint { color: #8b9293; font-size: 10px; line-height: 1.5; }

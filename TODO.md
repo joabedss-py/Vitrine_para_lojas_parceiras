@@ -31,3 +31,5 @@
 - [x] **Título e descrição do produto** — Em todas as páginas de produto, usar fonte de 26 px no título. No formulário administrativo, oferecer controles para recuar e remover o recuo das linhas selecionadas da descrição em passos de dois espaços; manter quebras e espaços ao salvar para que a formatação apareça também na página pública.
 
 - [x] **Alinhamento de preços e condições no admin** — Manter os campos de preço e condições com a mesma altura (42 px), largura dentro da seção e alinhamento consistente apesar de rótulos e avisos de comprimentos diferentes; evitar que um aviso estique o campo; em telas estreitas, usar uma coluna e preservar a legibilidade.
+
+- [x] **Editor de descrição inspirado no Bloco de Notas** — No campo “Descrição e detalhes”, oferecer ajustes de família e tamanho da fonte, opção de quebra automática de linha e uma barra de estado com linha, coluna e caracteres; manter a edição em texto simples, preservar o conteúdo existente e lembrar as preferências do editor neste navegador.
