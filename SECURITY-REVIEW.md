@@ -35,4 +35,4 @@ A sessão do administrador continua com as flags `{ httpOnly: true, secure: true
 
 `pnpm check` passou, os 24 testes passaram, `pnpm build` compilou frontend e servidor e o manifesto de rotas retornou HTTP 200 no Preview. O Preview de desenvolvimento respondeu com `nosniff` e HSTS sem CSP ou X-Frame-Options, confirmando que o iframe não é bloqueado.
 
-As alterações de código estão preparadas para checkpoint; **a versão pública ainda não foi republicada**. A publicação automática está desativada. A CSP, o X-Frame-Options e a remoção do CDN no HTML publicado só entram em vigor quando o checkpoint for publicado.
+As alterações de código foram enviadas ao branch `main` do GitHub (implementação no commit `e163de5`). A publicação automática está desativada e **a versão pública ainda não foi republicada**. A CSP, o X-Frame-Options e a remoção do CDN no HTML publicado só entram em vigor quando o checkpoint for publicado.
