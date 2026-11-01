@@ -27,7 +27,7 @@ function isSecureAffiliateUrl(value: string) {
 
 const productFieldsBase = z.object({
   title: z.string().trim().min(1).max(180),
-  description: z.string().trim().min(1).max(6000),
+  description: z.string().min(1).max(6000).refine(value => value.trim().length > 0, "Informe uma descrição."),
   category: z.string().trim().min(1).max(80),
   price: priceInput,
   listPrice: optionalPriceInput,

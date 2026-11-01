@@ -3,8 +3,9 @@ import { startLogin } from "@/const";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
 import { comparePriceStrings, formatMoneyBRL, isValidPriceString, MAX_PRICE_INPUT_LENGTH, multiplyPriceStringByCount, normalizePriceString } from "@shared/price";
+import { adjustSelectedLineIndent, type IndentDirection } from "@shared/text-indent";
 import { ArrowLeft, ExternalLink, Image as ImageIcon, LoaderCircle, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 
 const allowedImageTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -117,6 +118,7 @@ export default function AdminPage() {
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
   const [loginError, setLoginError] = useState("");
+  const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (imagePreview.startsWith("blob:")) return () => URL.revokeObjectURL(imagePreview);
@@ -184,6 +186,29 @@ export default function AdminPage() {
     setImagePreview("");
     setFormError("");
     setNotice("");
+  }
+
+  function changeDescriptionIndent(direction: IndentDirection) {
+    const textarea = descriptionRef.current;
+    if (!textarea) return;
+
+    const adjusted = adjustSelectedLineIndent(
+      form.description,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+      direction,
+    );
+    if (adjusted.value.length > 6000) {
+      setFormError("A descrição não pode ultrapassar 6.000 caracteres.");
+      return;
+    }
+
+    setForm(current => ({ ...current, description: adjusted.value }));
+    setFormError("");
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(adjusted.selectionStart, adjusted.selectionEnd);
+    });
   }
 
   function chooseImage(file?: File) {
@@ -264,7 +289,7 @@ export default function AdminPage() {
       }
       const fields = {
         title: form.title.trim(),
-        description: form.description.trim(),
+        description: form.description.trimEnd(),
         category: form.category.trim() || "Geral",
         price,
         listPrice,
@@ -365,7 +390,15 @@ export default function AdminPage() {
             <h2 id="form-title">{form.id ? "Editar produto" : "Adicionar produto"}</h2>
             <form className="admin-form" onSubmit={submitForm}>
               <div className="form-field"><label htmlFor="product-title">Título do produto</label><input id="product-title" required maxLength={180} value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Fone sem fio Bluetooth" /></div>
-              <div className="form-field"><label htmlFor="product-description">Descrição e detalhes</label><textarea id="product-description" required maxLength={6000} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} placeholder="Conte o que vale a pena saber sobre este produto." /></div>
+              <div className="form-field">
+                <label htmlFor="product-description">Descrição e detalhes</label>
+                <div className="description-indent-tools" role="group" aria-label="Formatação de recuo da descrição">
+                  <button className="small-button" type="button" onClick={() => changeDescriptionIndent("indent")}>Recuar linhas</button>
+                  <button className="small-button" type="button" onClick={() => changeDescriptionIndent("outdent")}>Remover recuo</button>
+                  <span className="form-hint">Use os botões nas linhas selecionadas (2 espaços).</span>
+                </div>
+                <textarea ref={descriptionRef} id="product-description" required maxLength={6000} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} placeholder="Conte o que vale a pena saber sobre este produto." />
+              </div>
               <div className="form-field"><label htmlFor="product-category">Categoria</label><input id="product-category" required maxLength={80} value={form.category} onChange={event => setForm({ ...form, category: event.target.value })} placeholder="Ex.: Casa, tecnologia, beleza" /></div>
               <div className="form-field"><label htmlFor="product-store">Loja/vendedor (opcional)</label><input id="product-store" maxLength={120} value={form.storeName} onChange={event => setForm({ ...form, storeName: event.target.value })} placeholder="Ex.: TNT Info, Amazon, outra loja" /></div>
               <section className="pricing-form-section" aria-labelledby="pricing-form-title">
