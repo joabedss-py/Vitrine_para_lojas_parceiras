@@ -12,6 +12,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/produto/:id/:slug">
+        {params => <ProductDetailPage id={Number(params.id)} slug={params.slug} />}
+      </Route>
       <Route path="/produto/:id">
         {params => <ProductDetailPage id={Number(params.id)} />}
       </Route>

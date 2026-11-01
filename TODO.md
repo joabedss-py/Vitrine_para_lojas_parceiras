@@ -21,3 +21,5 @@
 - [x] **Entrada flexível de preços** — Nos campos de cadastro, aceitar vírgula e ponto como separador decimal, com ou sem separadores de milhar (por exemplo, `9.699,00`, `9,699.00`, `9699,00` e `9699.00`), normalizando o valor sem perda de centavos. Somente o preço à vista principal permanece obrigatório; preço original, Pix, cartão e observações continuam opcionais. Quando houver preço parcelado, valor por parcela e quantidade devem ser informados juntos.
 
 - [x] **Corrigir bloqueio de cadastro de preços** — O formulário aceita valores como `9.699,00` sem bloqueio nativo do navegador; a validação ocorre pelo parser monetário do sistema e apresenta mensagem compreensível quando o formato é inválido, preservando os campos opcionais.
+
+- [x] **URL e título específicos por produto** — Ao clicar em um produto, abrir uma URL que contenha o código/ID do produto e um trecho legível do nome dele; a página e o título do navegador devem identificar aquele produto. Manter links antigos de produto compatíveis e atualizar o manifesto de rotas.

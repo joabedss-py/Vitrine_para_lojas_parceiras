@@ -1,12 +1,44 @@
 import Brand from "@/components/Brand";
 import ProductPricing from "@/components/ProductPricing";
 import { trpc } from "@/lib/trpc";
+import { buildProductPath } from "@shared/product-url";
 import { ArrowLeft, BadgeInfo, ExternalLink, Image as ImageIcon } from "lucide-react";
+import { useEffect } from "react";
 import { Link } from "wouter";
 import NotFound from "./NotFound";
 
-export default function ProductDetailPage({ id }: { id: number }) {
+export default function ProductDetailPage({ id, slug }: { id: number; slug?: string }) {
   const productQuery = trpc.products.byId.useQuery({ id }, { enabled: Number.isInteger(id) && id > 0 });
+
+  useEffect(() => {
+    const product = productQuery.data;
+    if (!product) return;
+
+    const canonicalPath = buildProductPath(product.id, product.title);
+    if (window.location.pathname !== canonicalPath) {
+      window.history.replaceState(window.history.state, "", canonicalPath);
+    }
+
+    const previousTitle = document.title;
+    const descriptionMeta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    const previousDescription = descriptionMeta?.content;
+    const meta = descriptionMeta ?? document.createElement("meta");
+    if (!descriptionMeta) {
+      meta.name = "description";
+      document.head.append(meta);
+    }
+    document.title = `${product.title} | Vitrine`;
+    meta.content = product.description.slice(0, 160);
+
+    return () => {
+      document.title = previousTitle;
+      if (descriptionMeta && previousDescription !== undefined) {
+        descriptionMeta.content = previousDescription;
+      } else if (!descriptionMeta) {
+        meta.remove();
+      }
+    };
+  }, [productQuery.data, id, slug]);
 
   if (!Number.isInteger(id) || id <= 0) return <NotFound />;
   if (productQuery.isLoading) {

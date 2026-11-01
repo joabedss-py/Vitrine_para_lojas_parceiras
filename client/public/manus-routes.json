@@ -1,1 +1,1 @@
-{"routes":[{"path":"/","title":"Vitrine"},{"path":"/produto/:id","title":"Detalhes do produto"},{"path":"/admin","title":"Administração do catálogo"}]}
+{"routes":[{"path":"/","title":"Vitrine"},{"path":"/produto/:id/:slug","title":"Detalhes do produto por código e nome"},{"path":"/produto/:id","title":"Detalhes do produto por código"},{"path":"/admin","title":"Administração do catálogo"}]}

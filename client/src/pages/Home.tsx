@@ -2,6 +2,7 @@ import Brand from "@/components/Brand";
 import ProductPricing from "@/components/ProductPricing";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
+import { buildProductPath } from "@shared/product-url";
 import { ArrowUpRight, BadgeInfo, ExternalLink, Search, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
@@ -9,20 +10,21 @@ import { Link } from "wouter";
 const PRODUCT_PAGE_SIZE = 12;
 
 function ProductCard({ product }: { product: CatalogProduct }) {
+  const productPath = buildProductPath(product.id, product.title);
   return (
     <article className="product-card">
-      <Link href={`/produto/${product.id}`} className="product-image-link" aria-label={`Ver detalhes de ${product.title}`}>
+      <Link href={productPath} className="product-image-link" aria-label={`Ver detalhes de ${product.title}`}>
         <img className="product-image" src={product.imageUrl} alt={product.title} loading="lazy" decoding="async" />
         <span className="product-category">{product.category}</span>
       </Link>
       <div className="product-card-body">
-        <h3 className="product-card-title"><Link href={`/produto/${product.id}`}>{product.title}</Link></h3>
+        <h3 className="product-card-title"><Link href={productPath}>{product.title}</Link></h3>
         <p className="product-card-description">{product.description}</p>
         <ProductPricing product={product} compact />
         <a className="buy-button" href={product.affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer">
           Compre aqui <ExternalLink aria-hidden="true" />
         </a>
-        <Link className="card-detail-link" href={`/produto/${product.id}`}>Ver detalhes do produto</Link>
+        <Link className="card-detail-link" href={productPath}>Ver detalhes do produto</Link>
       </div>
     </article>
   );
