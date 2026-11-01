@@ -1,4 +1,4 @@
-# Vitrine Mercado Livre
+# Vitrine para Lojas Parceiras
 
 React / Express / tRPC / Drizzle starter, adapted from the Sandbox web-db-user template.
 
