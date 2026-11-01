@@ -153,8 +153,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .detail-image-frame { display: grid; place-items: center; min-height: 430px; aspect-ratio: 1.05 / 1; overflow: hidden; border: 1px solid #eae7e1; border-radius: 15px; background: #f0efeb; }
 .detail-image { display: block; width: 100%; height: 100%; max-height: 600px; object-fit: contain; padding: 32px; }
 .detail-copy { padding-top: 19px; }
-.detail-copy h1 { margin: 13px 0 17px; color: var(--primary); font-size: clamp(26px, 3vw, 38px); line-height: 1.1; letter-spacing: -1.5px; font-weight: 600; }
-.detail-description { margin: 0; color: #6f7a80; font-size: 15px; line-height: 1.8; white-space: pre-line; }
+.detail-copy h1 { margin: 13px 0 17px; color: var(--primary); font-size: 26px; line-height: 1.2; letter-spacing: -0.7px; font-weight: 600; }
+.detail-description { margin: 0; color: #6f7a80; font-size: 15px; line-height: 1.8; white-space: pre-line; text-indent: 1.5em; }
 .detail-price { margin: 34px 0 22px; padding-top: 23px; border-top: 1px solid var(--border); color: var(--primary); font-size: 36px; font-weight: 700; letter-spacing: -1.4px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .detail-buy { width: 100%; min-height: 54px; font-size: 15px; }
 .detail-note { margin: 14px 0 0; color: #82888a; font-size: 11px; line-height: 1.6; text-align: center; }
@@ -187,9 +187,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .form-field { display: grid; gap: 6px; }
 .form-field label, .field-label { color: #4e5c64; font-size: 11px; font-weight: 700; }
 .pricing-form-section { display: grid; gap: 12px; padding: 13px; border: 1px solid #ece8e0; border-radius: 9px; background: #fbfaf7; }
+.pricing-form-section { min-width: 0; }
 .pricing-form-title h3 { margin: 0; color: var(--primary); font-size: 13px; }
 .pricing-form-title p { margin: 4px 0 0; color: #82898a; font-size: 10px; line-height: 1.45; }
-.pricing-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.pricing-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 11px; align-items: start; }
+.pricing-form-grid .form-field { min-width: 0; align-content: start; }
+.pricing-form-grid .form-field label { display: flex; min-height: 2.8em; align-items: flex-end; line-height: 1.35; }
+.pricing-form-grid .form-field input, .pricing-form-grid .form-field select { min-width: 0; }
+.card-calculation-preview { margin: 0; padding: 10px 12px; border: 1px solid #dbe8de; border-radius: 7px; background: #f1f7f2; color: #536d5a; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.card-calculation-preview strong { color: #2c6340; }
 .form-field input, .form-field textarea, .form-field select { width: 100%; min-height: 42px; padding: 10px 11px; border: 1px solid #e2e0db; border-radius: 7px; background: #fff; color: var(--foreground); font-size: 12px; }
 .form-field textarea { min-height: 98px; resize: vertical; line-height: 1.55; }
 .form-field input[type="file"] { padding: 8px; background: #faf9f6; }
@@ -272,11 +278,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .detail-image-frame { width: 100%; min-height: 280px; aspect-ratio: 1.1 / 1; }
   .detail-image { padding: 20px; }
   .detail-copy { width: 100%; padding-top: 0; }
-  .detail-copy h1 { margin: 12px 0; font-size: 27px; letter-spacing: -1.1px; }
+  .detail-copy h1 { margin: 12px 0; font-size: 26px; letter-spacing: -.7px; }
   .detail-description { font-size: 13px; }
   .detail-copy .product-pricing { margin: 23px 0 17px; padding-top: 18px; }
   .detail-copy .pricing-cash strong { font-size: 31px; }
   .pricing-form-grid { grid-template-columns: 1fr; }
+  .pricing-form-grid .form-field label { min-height: 0; }
   .admin-top { padding: 17px 0; }
   .admin-top-actions { gap: 9px; font-size: 10px; }
   .admin-heading { padding: 27px 0 18px; }

@@ -49,6 +49,12 @@ describe("price helpers", () => {
     expect(multiplyPriceStringByCount("969,90", 10)).toBe("9699.00");
   });
 
+  it("calculates installment totals exactly without floating-point rounding", () => {
+    expect(multiplyPriceStringByCount("0,01", 3)).toBe("0.03");
+    expect(multiplyPriceStringByCount("329,99", 12)).toBe("3959.88");
+    expect(multiplyPriceStringByCount("1.234,56", 7)).toBe("8641.92");
+  });
+
   it("compares large prices without floating-point conversion", () => {
     const large = `${"9".repeat(63)},99`;
     expect(comparePriceStrings(large, `${"9".repeat(63)},98`)).toBe(1);

@@ -50,7 +50,7 @@ export default function ProductPricing({ product, compact = false }: { product: 
               </small>
             </div>
           </div>
-          <p className="pricing-card-total">Total no cartão: <strong>{formatMoneyBRL(multiplyPriceStringByCount(product.cardInstallmentPrice, product.installments))}</strong></p>
+          <p className="pricing-card-total">Total no cartão em {product.installments} parcelas: <strong>{formatMoneyBRL(multiplyPriceStringByCount(product.cardInstallmentPrice, product.installments))}</strong></p>
         </div>
       )}
       {product.shippingInfo && <p className="pricing-note"><strong>Frete/entrega:</strong> {product.shippingInfo}</p>}

@@ -2,7 +2,7 @@ import Brand from "@/components/Brand";
 import { startLogin } from "@/const";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
-import { comparePriceStrings, formatMoneyBRL, isValidPriceString, MAX_PRICE_INPUT_LENGTH, normalizePriceString } from "@shared/price";
+import { comparePriceStrings, formatMoneyBRL, isValidPriceString, MAX_PRICE_INPUT_LENGTH, multiplyPriceStringByCount, normalizePriceString } from "@shared/price";
 import { ArrowLeft, ExternalLink, Image as ImageIcon, LoaderCircle, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
@@ -132,6 +132,17 @@ export default function AdminPage() {
 
   const isSaving = isOptimizingImage || uploadImage.isPending || create.isPending || update.isPending;
   const isAuthorized = auth.data?.isAdmin === true;
+  const installmentCount = Number(form.installments);
+  const normalizedInstallmentPrice = form.cardInstallmentPrice.trim() && isValidPriceString(form.cardInstallmentPrice)
+    ? normalizePriceString(form.cardInstallmentPrice)
+    : null;
+  const cardCalculation = normalizedInstallmentPrice && Number.isInteger(installmentCount) && installmentCount >= 1 && installmentCount <= 48
+    ? {
+        installmentCount,
+        installmentPrice: normalizedInstallmentPrice,
+        total: multiplyPriceStringByCount(normalizedInstallmentPrice, installmentCount),
+      }
+    : null;
 
   async function refreshCatalog() {
     await Promise.all([
@@ -369,6 +380,7 @@ export default function AdminPage() {
                   <div className="form-field"><label htmlFor="product-shipping">Frete/entrega (opcional)</label><input id="product-shipping" maxLength={180} value={form.shippingInfo} onChange={event => setForm({ ...form, shippingInfo: event.target.value })} placeholder="Ex.: Frete grátis na primeira compra" /></div>
                   <div className="form-field"><label htmlFor="product-promotion">Observação de promoção (opcional)</label><input id="product-promotion" maxLength={180} value={form.promotionInfo} onChange={event => setForm({ ...form, promotionInfo: event.target.value })} placeholder="Ex.: Oferta válida até domingo" /></div>
                 </div>
+                {cardCalculation && <p className="card-calculation-preview" role="status" aria-live="polite">Total no cartão: {cardCalculation.installmentCount} × {formatMoneyBRL(cardCalculation.installmentPrice)} = <strong>{formatMoneyBRL(cardCalculation.total)}</strong></p>}
                 <span className="form-hint">O total no cartão será calculado pelo valor de cada parcela multiplicado pela quantidade informada.</span>
               </section>
               <div className="form-field"><label htmlFor="affiliate-link">Link de afiliado da loja</label><input id="affiliate-link" type="url" pattern="https://.*" required maxLength={2048} value={form.affiliateUrl} onChange={event => setForm({ ...form, affiliateUrl: event.target.value })} placeholder="https://www.loja.com.br/produto/..." /><span className="form-hint">Use o link HTTPS da loja ou da plataforma de afiliados.</span></div>

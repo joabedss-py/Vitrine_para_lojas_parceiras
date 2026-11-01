@@ -25,3 +25,9 @@
 - [x] **URL curta e título específico por produto** — Ao clicar em um produto, abrir a URL curta somente com seu código/ID e barra final, no formato `/produto/30001/`, sem nome no caminho. O título visível da página e o título da aba identificam o produto. Links antigos com slug ou sem barra final continuam funcionando e são canonicalizados para a URL curta.
 
 - [x] **Tamanho menor dos nomes dos produtos** — Reduzir moderadamente os títulos dos cards e da lista administrativa, incluindo telas móveis; reduzir ainda mais o título na página de detalhes do produto. Preservar a hierarquia e a legibilidade, sem alterar o tamanho dos preços.
+
+- [x] **Cálculo claro do cartão** — No cadastro, exibir uma prévia do total como quantidade de parcelas × valor de cada parcela = total; atualizar a prévia quando os campos mudarem e calcular exatamente até os centavos. Na página do produto, identificar no total quantas parcelas foram consideradas.
+
+- [x] **Título e descrição do produto** — Em todas as páginas de produto, usar fonte de 26 px no título; indentar a primeira linha do texto de descrição sem prejudicar quebras de linha ou legibilidade.
+
+- [x] **Alinhamento de preços e condições no admin** — Ajustar os campos de preço e condições para que os controles tenham largura correta e os inputs fiquem alinhados apesar de rótulos de comprimentos diferentes; manter apresentação legível em telas estreitas.
