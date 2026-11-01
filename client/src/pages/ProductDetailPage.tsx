@@ -31,7 +31,7 @@ export default function ProductDetailPage({ id }: { id: number }) {
       </div>
       <main className="detail-layout">
         <div className="detail-image-frame">
-          <img className="detail-image" src={product.imageUrl} alt={product.title} />
+          <img className="detail-image" src={product.imageUrl} alt={product.title} decoding="async" fetchPriority="high" />
         </div>
         <section className="detail-copy" aria-labelledby="product-title">
           <span className="detail-category">{product.category}</span>

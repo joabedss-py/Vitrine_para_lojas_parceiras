@@ -6,7 +6,7 @@ import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
-import { adminProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, isAdminAuthorized, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
 const productFields = z.object({
@@ -68,12 +68,14 @@ function matchesImageSignature(contentType: string, bytes: Buffer) {
 const categoriesInput = z.object({
   search: z.string().trim().max(100).optional(),
   category: z.string().trim().max(80).optional(),
+  limit: z.number().int().min(1).max(49).optional(),
+  offset: z.number().int().min(0).max(1_000_000).optional(),
 }).optional();
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(({ ctx }) => ctx.user ? { ...ctx.user, isAdmin: isAdminAuthorized(ctx.user) } : null),
     providers: publicProcedure.query(() => ({
       google: Boolean(ENV.googleClientId && ENV.googleClientSecret),
     })),

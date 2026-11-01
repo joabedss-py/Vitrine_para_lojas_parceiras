@@ -87,7 +87,12 @@ async function requireDb() {
   return db;
 }
 
-export async function listProducts(filters: { search?: string; category?: string } = {}) {
+export async function listProducts(filters: {
+  search?: string;
+  category?: string;
+  limit?: number;
+  offset?: number;
+} = {}) {
   const db = await requireDb();
   const conditions = [eq(products.isActive, true)];
   if (filters.category) conditions.push(eq(products.category, filters.category));
@@ -105,7 +110,9 @@ export async function listProducts(filters: { search?: string; category?: string
     .select()
     .from(products)
     .where(and(...conditions))
-    .orderBy(desc(products.createdAt), desc(products.id));
+    .orderBy(desc(products.createdAt), desc(products.id))
+    .limit(filters.limit ?? 13)
+    .offset(filters.offset ?? 0);
 }
 
 export async function listAdminProducts() {

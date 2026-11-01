@@ -6,4 +6,8 @@
 
 - [x] **Compra pelo link de afiliado e transparência** — O botão exibe o texto “Compre aqui” e redireciona para o link de afiliado configurado para aquele produto, validado como endereço HTTPS do Mercado Livre ou link curto meli.la. O site exibe aviso transparente de que alguns links são de afiliado e de que a compra ocorre no Mercado Livre.
 
-- [ ] **Login Google para a área administrativa publicada** — O administrador poderá iniciar sessão na área `/admin` com Google usando o OAuth client que cadastrou; somente a conta Google cujo e-mail corresponde ao `ADMIN_EMAIL` autorizado poderá editar o catálogo. O login Manus continuará disponível como alternativa, e credenciais Google serão mantidas somente no servidor do ambiente de produção.
+- [x] **Login Google para a área administrativa publicada** — O administrador poderá iniciar sessão na área `/admin` com Google usando o OAuth client cadastrado; somente a conta Google cujo e-mail corresponde ao `ADMIN_EMAIL` autorizado poderá editar o catálogo. O login Manus continua disponível como alternativa, e as credenciais Google ficam somente no servidor de produção. A publicação foi verificada com Google habilitado e callback correto.
+
+- [x] **Reduzir travamentos e lentidão** — A vitrine deve responder e rolar com mais fluidez, reduzindo trabalho de carregamento de imagens e de listagens, sem alterar o cadastro dos produtos, seus links de afiliado ou o fluxo de compra.
+
+- [ ] **Atualizar o e-mail administrador e publicar nova versão** — Trocar o e-mail autorizado do administrador por meio do formulário protegido de produção, manter esse valor somente em segredo do ambiente e publicar uma nova versão do site. Somente a identidade autorizada deve continuar com acesso à administração.

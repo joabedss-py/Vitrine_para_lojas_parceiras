@@ -17,18 +17,19 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+export function isAdminAuthorized(user: NonNullable<TrpcContext["user"]>) {
+  const normalizedEmail = user.email?.trim().toLowerCase();
+  const configuredEmail = ENV.adminEmail.trim().toLowerCase();
+  const isAllowlisted =
+    (Boolean(configuredEmail) && normalizedEmail === configuredEmail) ||
+    (Boolean(ENV.ownerOpenId) && user.openId === ENV.ownerOpenId);
+  return user.role === "admin" && isAllowlisted;
+}
+
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
-    const normalizedEmail = ctx.user?.email?.trim().toLowerCase();
-    const configuredEmail = ENV.adminEmail.trim().toLowerCase();
-    const isAllowlisted = Boolean(
-      ctx.user && (
-        (configuredEmail && normalizedEmail === configuredEmail) ||
-        (ENV.ownerOpenId && ctx.user.openId === ENV.ownerOpenId)
-      ),
-    );
-    if (!ctx.user || ctx.user.role !== "admin" || !isAllowlisted) {
+    if (!ctx.user || !isAdminAuthorized(ctx.user)) {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
     return next({ ctx: { ...ctx, user: ctx.user } });

@@ -2,16 +2,17 @@ import Brand from "@/components/Brand";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
 import { ArrowUpRight, BadgeInfo, ExternalLink, Search, ShoppingBag } from "lucide-react";
-import { useDeferredValue, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const PRODUCT_PAGE_SIZE = 12;
 
 function ProductCard({ product }: { product: CatalogProduct }) {
   return (
     <article className="product-card">
       <Link href={`/produto/${product.id}`} className="product-image-link" aria-label={`Ver detalhes de ${product.title}`}>
-        <img className="product-image" src={product.imageUrl} alt={product.title} loading="lazy" />
+        <img className="product-image" src={product.imageUrl} alt={product.title} loading="lazy" decoding="async" />
         <span className="product-category">{product.category}</span>
       </Link>
       <div className="product-card-body">
@@ -30,13 +31,25 @@ function ProductCard({ product }: { product: CatalogProduct }) {
 export default function Home() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
-  const deferredSearch = useDeferredValue(search.trim());
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(0);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(0);
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
   const productsQuery = trpc.products.list.useQuery({
-    search: deferredSearch || undefined,
+    search: debouncedSearch || undefined,
     category: category || undefined,
+    limit: PRODUCT_PAGE_SIZE + 1,
+    offset: page * PRODUCT_PAGE_SIZE,
   });
   const categoriesQuery = trpc.products.categories.useQuery();
-  const products = productsQuery.data ?? [];
+  const pageResults = productsQuery.data ?? [];
+  const hasMore = pageResults.length > PRODUCT_PAGE_SIZE;
+  const products = pageResults.slice(0, PRODUCT_PAGE_SIZE);
 
   return (
     <div className="site-shell">
@@ -67,7 +80,7 @@ export default function Home() {
               <h2 id="catalog-heading">Produtos em destaque</h2>
               <p>Veja os detalhes antes de seguir para a loja.</p>
             </div>
-            {products.length > 0 && <span className="result-count">{products.length} {products.length === 1 ? "produto" : "produtos"}</span>}
+            {products.length > 0 && <span className="result-count">{products.length} {hasMore ? "nesta página" : products.length === 1 ? "produto" : "produtos"}</span>}
           </div>
 
           <div className="catalog-controls">
@@ -76,15 +89,16 @@ export default function Home() {
               <input
                 type="search"
                 value={search}
+                maxLength={100}
                 onChange={event => setSearch(event.target.value)}
                 placeholder="Buscar produtos..."
                 aria-label="Buscar produtos"
               />
             </label>
             <div className="category-list" aria-label="Filtrar por categoria">
-              <button className={`category-chip${category === "" ? " is-selected" : ""}`} onClick={() => setCategory("")}>Todas</button>
+              <button className={`category-chip${category === "" ? " is-selected" : ""}`} onClick={() => { setCategory(""); setPage(0); }}>Todas</button>
               {(categoriesQuery.data ?? []).map(item => (
-                <button key={item} className={`category-chip${category === item ? " is-selected" : ""}`} onClick={() => setCategory(item)}>{item}</button>
+                <button key={item} className={`category-chip${category === item ? " is-selected" : ""}`} onClick={() => { setCategory(item); setPage(0); }}>{item}</button>
               ))}
             </div>
           </div>
@@ -94,9 +108,17 @@ export default function Home() {
           ) : productsQuery.error ? (
             <div className="state-panel"><div><BadgeInfo aria-hidden="true" /><h2>Não foi possível carregar a vitrine</h2><p>{productsQuery.error.message}</p><button className="state-action" onClick={() => void productsQuery.refetch()}>Tentar novamente</button></div></div>
           ) : products.length === 0 ? (
-            <div className="state-panel"><div><ShoppingBag aria-hidden="true" /><h2>{search || category ? "Nenhum produto encontrado" : "A vitrine está sendo preparada"}</h2><p>{search || category ? "Experimente mudar a busca ou escolher outra categoria." : "Em breve, esta seleção terá produtos com imagens, detalhes e links para comprar no Mercado Livre."}</p>{(search || category) && <button className="state-action" onClick={() => { setSearch(""); setCategory(""); }}>Limpar filtros</button>}</div></div>
+            <div className="state-panel"><div><ShoppingBag aria-hidden="true" /><h2>{search || category ? "Nenhum produto encontrado" : "A vitrine está sendo preparada"}</h2><p>{search || category ? "Experimente mudar a busca ou escolher outra categoria." : "Em breve, esta seleção terá produtos com imagens, detalhes e links para comprar no Mercado Livre."}</p>{(search || category) && <button className="state-action" onClick={() => { setSearch(""); setCategory(""); setPage(0); }}>Limpar filtros</button>}</div></div>
           ) : (
             <div className="product-grid">{products.map(product => <ProductCard key={product.id} product={product} />)}</div>
+          )}
+
+          {productsQuery.isSuccess && (page > 0 || hasMore) && (
+            <nav className="catalog-pagination" aria-label="Paginação de produtos">
+              <button className="small-button" type="button" disabled={page === 0 || productsQuery.isFetching} onClick={() => setPage(current => Math.max(0, current - 1))}>Anterior</button>
+              <span>Página {page + 1}</span>
+              <button className="small-button" type="button" disabled={!hasMore || productsQuery.isFetching} onClick={() => setPage(current => current + 1)}>Próxima</button>
+            </nav>
           )}
 
           <aside className="disclosure-banner">
