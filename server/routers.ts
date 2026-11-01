@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { isValidPriceString, normalizePriceString } from "../shared/price";
+import { comparePriceStrings, isValidPriceString, normalizePriceString } from "../shared/price";
 import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -13,48 +13,57 @@ import * as db from "./db";
 const priceInput = z.string().trim()
   .refine(isValidPriceString, "Informe um preço positivo com até 63 dígitos e duas casas decimais.")
   .transform(normalizePriceString);
+const optionalPriceInput = z.union([z.literal(""), z.null(), priceInput])
+  .transform(value => value === "" ? null : value);
 
-const productFields = z.object({
-  title: z.string().trim().min(1).max(180),
-  description: z.string().trim().min(1).max(6000),
-  category: z.string().trim().min(1).max(80),
-  price: priceInput,
-  imageUrl: z.string().min(1).max(1000).refine(isProductImagePath, "Imagem inválida"),
-  affiliateUrl: z.string().url().max(2048),
-  isActive: z.boolean(),
-});
-
-function isProductImagePath(value: string) {
-  return value.startsWith("/manus-storage/") &&
-    !value.includes("..") &&
-    /^\/manus-storage\/[A-Za-z0-9._/-]+$/.test(value);
-}
-
-function isMercadoLivreUrl(value: string) {
+function isSecureAffiliateUrl(value: string) {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:") return false;
-    const hostname = url.hostname.toLowerCase();
-    const officialDomains = [
-      "mercadolivre.com.br",
-      "mercadolivre.com",
-      "mercadolibre.com.br",
-      "mercadolibre.com",
-      "meli.la",
-    ];
-    return officialDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
+    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
   } catch {
     return false;
   }
 }
 
-function validateAffiliateUrl(value: string) {
-  if (!isMercadoLivreUrl(value)) {
-    throw new TRPCError({
-      code: "BAD_REQUEST",
-      message: "Use um link HTTPS do Mercado Livre ou um link curto meli.la.",
-    });
+const productFieldsBase = z.object({
+  title: z.string().trim().min(1).max(180),
+  description: z.string().trim().min(1).max(6000),
+  category: z.string().trim().min(1).max(80),
+  price: priceInput,
+  listPrice: optionalPriceInput,
+  pixPrice: optionalPriceInput,
+  cardInstallmentPrice: optionalPriceInput,
+  installments: z.number().int().min(1).max(48).nullable(),
+  cardInterestFree: z.boolean().nullable(),
+  storeName: z.union([z.string().trim().max(120), z.null()]),
+  shippingInfo: z.union([z.string().trim().max(180), z.null()]),
+  promotionInfo: z.union([z.string().trim().max(180), z.null()]),
+  imageUrl: z.string().min(1).max(1000).refine(isProductImagePath, "Imagem inválida"),
+  affiliateUrl: z.string().url().max(2048).refine(isSecureAffiliateUrl, "Use um link HTTPS válido da loja ou da plataforma de afiliados."),
+  isActive: z.boolean(),
+});
+
+function validateProductPricing(
+  fields: Pick<z.output<typeof productFieldsBase>, "price" | "listPrice" | "cardInstallmentPrice" | "installments" | "cardInterestFree">,
+  context: z.RefinementCtx,
+) {
+  if (fields.listPrice && comparePriceStrings(fields.listPrice, fields.price) <= 0) {
+    context.addIssue({ code: "custom", path: ["listPrice"], message: "O preço original deve ser maior que o preço à vista." });
   }
+  if ((fields.cardInstallmentPrice === null) !== (fields.installments === null)) {
+    context.addIssue({ code: "custom", path: ["installments"], message: "Informe o valor por parcela e a quantidade de parcelas juntos." });
+  }
+  if (fields.cardInstallmentPrice === null && fields.cardInterestFree !== null) {
+    context.addIssue({ code: "custom", path: ["cardInterestFree"], message: "Informe os juros somente quando cadastrar as parcelas do cartão." });
+  }
+}
+
+const productFields = productFieldsBase.superRefine(validateProductPricing);
+
+function isProductImagePath(value: string) {
+  return value.startsWith("/manus-storage/") &&
+    !value.includes("..") &&
+    /^\/manus-storage\/[A-Za-z0-9._/-]+$/.test(value);
 }
 
 function matchesImageSignature(contentType: string, bytes: Buffer) {
@@ -121,14 +130,12 @@ export const appRouter = router({
         }
       }),
     create: adminProcedure.input(productFields).mutation(async ({ input }) => {
-      validateAffiliateUrl(input.affiliateUrl);
       const id = await db.createProduct(input);
       return { id };
     }),
     update: adminProcedure
-      .input(productFields.extend({ id: z.number().int().positive() }))
+      .input(productFieldsBase.extend({ id: z.number().int().positive() }).superRefine(validateProductPricing))
       .mutation(async ({ input }) => {
-        validateAffiliateUrl(input.affiliateUrl);
         const { id, ...fields } = input;
         if (!(await db.getAdminProductById(id))) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado" });

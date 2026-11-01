@@ -1,6 +1,6 @@
 import Brand from "@/components/Brand";
+import ProductPricing from "@/components/ProductPricing";
 import { trpc } from "@/lib/trpc";
-import { formatMoneyBRL } from "@shared/price";
 import { ArrowLeft, BadgeInfo, ExternalLink, Image as ImageIcon } from "lucide-react";
 import { Link } from "wouter";
 import NotFound from "./NotFound";
@@ -36,16 +36,16 @@ export default function ProductDetailPage({ id }: { id: number }) {
           <span className="detail-category">{product.category}</span>
           <h1 id="product-title">{product.title}</h1>
           <p className="detail-description">{product.description}</p>
-          <p className="detail-price">{formatMoneyBRL(product.price)}</p>
+          <ProductPricing product={product} />
           <a className="buy-button detail-buy" href={product.affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer">
             Compre aqui <ExternalLink aria-hidden="true" />
           </a>
-          <p className="detail-note">Você continuará para o Mercado Livre para concluir a compra. Este site pode receber comissão por este link de afiliado, sem custo adicional para você.</p>
+          <p className="detail-note">Você continuará para a loja parceira para concluir a compra. Preços, frete, estoque e condições podem mudar; confirme o valor final no checkout. Este site pode receber comissão por este link de afiliado, sem custo adicional.</p>
         </section>
       </main>
       <footer className="site-footer">
         <Brand />
-        <span className="footer-disclosure">A compra é feita no Mercado Livre; esta vitrine é independente.</span>
+        <span className="footer-disclosure">A compra é concluída no site da loja parceira; esta vitrine é independente.</span>
       </footer>
     </div>
   );

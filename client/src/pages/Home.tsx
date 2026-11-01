@@ -1,7 +1,7 @@
 import Brand from "@/components/Brand";
+import ProductPricing from "@/components/ProductPricing";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
-import { formatMoneyBRL } from "@shared/price";
 import { ArrowUpRight, BadgeInfo, ExternalLink, Search, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
@@ -18,7 +18,7 @@ function ProductCard({ product }: { product: CatalogProduct }) {
       <div className="product-card-body">
         <h3 className="product-card-title"><Link href={`/produto/${product.id}`}>{product.title}</Link></h3>
         <p className="product-card-description">{product.description}</p>
-        <p className="product-price">{formatMoneyBRL(product.price)}</p>
+        <ProductPricing product={product} compact />
         <a className="buy-button" href={product.affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer">
           Compre aqui <ExternalLink aria-hidden="true" />
         </a>
@@ -69,7 +69,7 @@ export default function Home() {
           </div>
           <div className="hero-copy">
             <strong>Uma vitrine feita para descobrir.</strong>
-            Encontre produtos selecionados, confira os detalhes e siga para comprar no Mercado Livre.
+            Encontre produtos selecionados, confira os preços e as condições e siga para a loja parceira.
           </div>
         </section>
 
@@ -108,7 +108,7 @@ export default function Home() {
           ) : productsQuery.error ? (
             <div className="state-panel"><div><BadgeInfo aria-hidden="true" /><h2>Não foi possível carregar a vitrine</h2><p>{productsQuery.error.message}</p><button className="state-action" onClick={() => void productsQuery.refetch()}>Tentar novamente</button></div></div>
           ) : products.length === 0 ? (
-            <div className="state-panel"><div><ShoppingBag aria-hidden="true" /><h2>{search || category ? "Nenhum produto encontrado" : "A vitrine está sendo preparada"}</h2><p>{search || category ? "Experimente mudar a busca ou escolher outra categoria." : "Em breve, esta seleção terá produtos com imagens, detalhes e links para comprar no Mercado Livre."}</p>{(search || category) && <button className="state-action" onClick={() => { setSearch(""); setCategory(""); setPage(0); }}>Limpar filtros</button>}</div></div>
+            <div className="state-panel"><div><ShoppingBag aria-hidden="true" /><h2>{search || category ? "Nenhum produto encontrado" : "A vitrine está sendo preparada"}</h2><p>{search || category ? "Experimente mudar a busca ou escolher outra categoria." : "Em breve, esta seleção terá produtos com imagens, detalhes e links para lojas parceiras."}</p>{(search || category) && <button className="state-action" onClick={() => { setSearch(""); setCategory(""); setPage(0); }}>Limpar filtros</button>}</div></div>
           ) : (
             <div className="product-grid">{products.map(product => <ProductCard key={product.id} product={product} />)}</div>
           )}
@@ -123,14 +123,14 @@ export default function Home() {
 
           <aside className="disclosure-banner">
             <BadgeInfo aria-hidden="true" />
-            <span><strong>Transparência:</strong> alguns links desta vitrine são de afiliado. Podemos receber uma comissão se você comprar por eles, sem custo adicional para você. A compra é concluída no Mercado Livre.</span>
+            <span><strong>Transparência:</strong> alguns links desta vitrine são de afiliado. Podemos receber uma comissão se você comprar por eles, sem custo adicional. Preços, frete, estoque e condições podem mudar; confirme os detalhes no site da loja.</span>
           </aside>
         </section>
       </main>
 
       <footer className="site-footer">
         <Brand />
-        <span className="footer-disclosure">Vitrine independente. Os produtos e links são selecionados e cadastrados pelo administrador; a finalização da compra acontece no Mercado Livre.</span>
+        <span className="footer-disclosure">Vitrine independente. Os produtos e links são cadastrados pelo administrador; a compra é concluída no site da loja parceira.</span>
       </footer>
     </div>
   );

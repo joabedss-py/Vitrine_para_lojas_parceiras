@@ -22,6 +22,13 @@
       "when": 1793538613829,
       "tag": "0002_rich_vance_astro",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1793539578732,
+      "tag": "0003_fresh_nextwave",
+      "breakpoints": true
     }
   ]
 }

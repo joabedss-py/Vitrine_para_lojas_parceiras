@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMoneyBRL, isValidPriceString, normalizePriceString } from "../shared/price";
+import { comparePriceStrings, formatMoneyBRL, getDiscountPercentage, isValidPriceString, multiplyPriceStringByCount, normalizePriceString } from "../shared/price";
 
 describe("price helpers", () => {
   it("accepts values beyond the former R$ 99.999.999,99 ceiling", () => {
@@ -21,5 +21,20 @@ describe("price helpers", () => {
 
   it("formats large BRL values and preserves cents exactly", () => {
     expect(formatMoneyBRL("100000000.5")).toBe("R$\u00a0100.000.000,50");
+  });
+
+  it("matches a storefront discount badge and calculates the total card price", () => {
+    expect(getDiscountPercentage("11639,00", "9699,00")).toBe(16);
+    expect(multiplyPriceStringByCount("969,90", 10)).toBe("9699.00");
+  });
+
+  it("compares large prices without floating-point conversion", () => {
+    const large = `${"9".repeat(63)},99`;
+    expect(comparePriceStrings(large, `${"9".repeat(63)},98`)).toBe(1);
+  });
+
+  it("recognizes a real sub-1-percent discount without inventing a whole-percent badge", () => {
+    expect(comparePriceStrings("100.99", "100.00")).toBe(1);
+    expect(getDiscountPercentage("100.99", "100.00")).toBe(0);
   });
 });
