@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+import {
+  canAutomaticallyRetryProductMonitor,
+  getPublicProductAvailability,
+  productMonitorRetryDelayMs,
+  PRODUCT_MONITOR_BASE_RETRY_MS,
+  PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS,
+  PRODUCT_MONITOR_MAX_RETRY_MS,
+  PRODUCT_MONITOR_PUBLIC_STATUS_STALE_AFTER_MS,
+  PRODUCT_MONITOR_SUCCESS_INTERVAL_MS,
+  PRODUCT_MONITOR_WORKER_INTERVAL_MINUTES,
+} from "../shared/product-monitor";
+
+describe("product monitor retry policy", () => {
+  it("checks products every six hours while the worker wakes every fifteen minutes", () => {
+    expect(PRODUCT_MONITOR_SUCCESS_INTERVAL_MS).toBe(6 * 60 * 60 * 1000);
+    expect(PRODUCT_MONITOR_WORKER_INTERVAL_MINUTES).toBe(15);
+  });
+
+  it("uses exponential backoff and honors a provider Retry-After without exceeding one day", () => {
+    expect(productMonitorRetryDelayMs(1)).toBe(PRODUCT_MONITOR_BASE_RETRY_MS);
+    expect(productMonitorRetryDelayMs(2)).toBe(2 * PRODUCT_MONITOR_BASE_RETRY_MS);
+    expect(productMonitorRetryDelayMs(4, 3 * 60 * 60 * 1000)).toBe(3 * 60 * 60 * 1000);
+    expect(productMonitorRetryDelayMs(8)).toBe(PRODUCT_MONITOR_MAX_RETRY_MS);
+    expect(productMonitorRetryDelayMs(2, 3 * PRODUCT_MONITOR_MAX_RETRY_MS)).toBe(PRODUCT_MONITOR_MAX_RETRY_MS);
+  });
+
+  it("pauses automatic retries after the configured maximum number of failures", () => {
+    expect(canAutomaticallyRetryProductMonitor(PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS - 1)).toBe(true);
+    expect(canAutomaticallyRetryProductMonitor(PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS)).toBe(false);
+  });
+});
+
+describe("public product availability freshness", () => {
+  const now = Date.parse("2026-11-01T12:00:00.000Z");
+
+  it("keeps a recent confirmed status", () => {
+    expect(getPublicProductAvailability("available", new Date(now - 6 * 60 * 60 * 1000), now)).toBe("available");
+    expect(getPublicProductAvailability("out_of_stock", new Date(now - 1_000), now)).toBe("out_of_stock");
+    expect(getPublicProductAvailability("unavailable", new Date(now - 1_000), now)).toBe("unavailable");
+  });
+
+  it("downgrades an absent or older-than-24-hours result to unconfirmed", () => {
+    expect(PRODUCT_MONITOR_PUBLIC_STATUS_STALE_AFTER_MS).toBe(24 * 60 * 60 * 1000);
+    expect(getPublicProductAvailability("available", null, now)).toBe("unknown");
+    expect(getPublicProductAvailability("out_of_stock", new Date(now - PRODUCT_MONITOR_PUBLIC_STATUS_STALE_AFTER_MS - 1), now)).toBe("unknown");
+    expect(getPublicProductAvailability("unknown", new Date(now - 1_000), now)).toBe("unknown");
+  });
+
+  it("does not trust invalid or implausibly future timestamps", () => {
+    expect(getPublicProductAvailability("available", "not-a-date", now)).toBe("unknown");
+    expect(getPublicProductAvailability("available", new Date(now + 10 * 60 * 1000), now)).toBe("unknown");
+  });
+});

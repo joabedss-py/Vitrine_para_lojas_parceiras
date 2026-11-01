@@ -1,9 +1,9 @@
 import Brand from "@/components/Brand";
-import ProductPricing from "@/components/ProductPricing";
+import ProductPricing, { ProductBuyButton } from "@/components/ProductPricing";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
 import { buildProductPath } from "@shared/product-url";
-import { ArrowUpRight, BadgeInfo, ExternalLink, Search, ShoppingBag } from "lucide-react";
+import { ArrowUpRight, BadgeInfo, Search, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
@@ -21,9 +21,7 @@ function ProductCard({ product }: { product: CatalogProduct }) {
         <h3 className="product-card-title"><Link href={productPath}>{product.title}</Link></h3>
         <p className="product-card-description">{product.description}</p>
         <ProductPricing product={product} compact />
-        <a className="buy-button" href={product.affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer">
-          Compre aqui <ExternalLink aria-hidden="true" />
-        </a>
+        <ProductBuyButton product={product} />
         <Link className="card-detail-link" href={productPath}>Ver detalhes do produto</Link>
       </div>
     </article>

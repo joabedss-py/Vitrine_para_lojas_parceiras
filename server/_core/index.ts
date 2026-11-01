@@ -4,9 +4,12 @@ import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerGoogleOAuthRoutes } from "./googleOAuth";
+import { registerMercadoLivreOAuthRoutes } from "./marketplaceOAuth";
 import { publicPlatformScript } from "./publicConfig";
 import { appRouter } from "../routers";
+import { claimProductMonitorRun, isRegisteredProductMonitorTask, markProductMonitorRun, PRODUCT_MONITOR_CALLBACK_PATH, runDueProductChecks } from "../productMonitor";
 import { createContext } from "./context";
+import { sdk } from "./sdk";
 import { serveStatic, setupVite } from "./vite";
 import { logInternalError } from "./errorLogging";
 import { globalErrorHandler } from "./errorHandling";
@@ -25,6 +28,27 @@ async function startServer() {
   });
   registerOAuthRoutes(app);
   registerGoogleOAuthRoutes(app);
+  registerMercadoLivreOAuthRoutes(app);
+  app.post(PRODUCT_MONITOR_CALLBACK_PATH, async (req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const identity = await sdk.authenticateRequest(req);
+      if (!identity.isCron || !identity.taskUid || !(await isRegisteredProductMonitorTask(identity.taskUid))) {
+        res.status(403).json({ error: "Não autorizado." });
+        return;
+      }
+      const claimed = await claimProductMonitorRun(identity.taskUid);
+      if (!claimed) {
+        res.status(200).json({ processed: 0, succeeded: 0, failed: 0, skipped: "already_running" });
+        return;
+      }
+      const result = await runDueProductChecks();
+      await markProductMonitorRun(identity.taskUid);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
   // tRPC API
   app.use(
     "/api/trpc",

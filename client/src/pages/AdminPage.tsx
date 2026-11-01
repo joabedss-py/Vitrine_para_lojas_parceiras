@@ -1,10 +1,11 @@
 import Brand from "@/components/Brand";
 import { startLogin } from "@/const";
-import type { CatalogProduct } from "@/lib/trpc";
+import type { RouterOutputs } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
 import { comparePriceStrings, formatMoneyBRL, isValidPriceString, MAX_PRICE_INPUT_LENGTH, multiplyPriceStringByCount, normalizePriceString } from "@shared/price";
 import { adjustSelectedLineIndent, type IndentDirection } from "@shared/text-indent";
-import { ArrowLeft, ExternalLink, Image as ImageIcon, LoaderCircle, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
+import { getPublicProductAvailability, PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS } from "@shared/product-monitor";
+import { ArrowLeft, ExternalLink, Image as ImageIcon, LoaderCircle, LogOut, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 
@@ -26,9 +27,27 @@ type ProductForm = {
   shippingInfo: string;
   promotionInfo: string;
   affiliateUrl: string;
+  sourceProvider: string;
+  sourceUrl: string;
+  monitorEnabled: boolean;
   imageUrl: string;
   isActive: boolean;
 };
+
+type AdminProduct = RouterOutputs["admin"]["list"][number];
+
+function formatMonitorDate(value: Date | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(date);
+}
+
+function availabilityText(status: string) {
+  if (status === "available") return "Disponível";
+  if (status === "out_of_stock") return "Fora de estoque";
+  if (status === "unavailable") return "Indisponível";
+  return "Disponibilidade não confirmada";
+}
 
 const descriptionEditorFontFamilies = ["Cascadia Mono", "Consolas", "Courier New"] as const;
 const descriptionEditorFontSizes = [12, 13, 14, 16] as const;
@@ -81,6 +100,9 @@ const emptyForm: ProductForm = {
   shippingInfo: "",
   promotionInfo: "",
   affiliateUrl: "",
+  sourceProvider: "manual",
+  sourceUrl: "",
+  monitorEnabled: false,
   imageUrl: "",
   isActive: true,
 };
@@ -143,6 +165,12 @@ export default function AdminPage() {
   const providers = trpc.auth.providers.useQuery();
   const logout = trpc.auth.logout.useMutation();
   const products = trpc.admin.list.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
+  const marketplaceProviders = trpc.admin.marketplaceProviders.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
+  const marketplaceStatus = trpc.admin.marketplaceStatus.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
+  const connectMercadoLivre = trpc.admin.connectMercadoLivre.useMutation();
+  const disconnectMercadoLivre = trpc.admin.disconnectMercadoLivre.useMutation();
+  const configureMonitorSchedule = trpc.admin.configureMonitorSchedule.useMutation();
+  const disableMonitorSchedule = trpc.admin.disableMonitorSchedule.useMutation();
   const utils = trpc.useUtils();
   const uploadImage = trpc.admin.uploadImage.useMutation();
   const create = trpc.admin.create.useMutation();
@@ -154,6 +182,7 @@ export default function AdminPage() {
   const [imagePreview, setImagePreview] = useState("");
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
+  const [monitorMessage, setMonitorMessage] = useState("");
   const [loginError, setLoginError] = useState("");
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [descriptionEditorSettings, setDescriptionEditorSettings] = useState(loadDescriptionEditorSettings);
@@ -179,8 +208,27 @@ export default function AdminPage() {
     else if (googleStatus === "unauthorized") setLoginError("Entre com o e-mail Google autorizado para administrar esta vitrine.");
   }, []);
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const status = url.searchParams.get("mercadolivre");
+    if (!status) return;
+    if (status === "connected") {
+      setMonitorMessage("Conta do Mercado Livre conectada.");
+      void marketplaceStatus.refetch();
+    } else if (status === "cancelled") {
+      setMonitorMessage("A autorização do Mercado Livre foi cancelada.");
+    } else if (status === "unavailable") {
+      setMonitorMessage("A integração do Mercado Livre não está configurada para este ambiente.");
+    } else {
+      setMonitorMessage("Não foi possível concluir a conexão com o Mercado Livre.");
+    }
+    url.searchParams.delete("mercadolivre");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
   const isSaving = isOptimizingImage || uploadImage.isPending || create.isPending || update.isPending;
   const isAuthorized = auth.data?.isAdmin === true;
+  const canVerifyProducts = Boolean(marketplaceStatus.data?.isProduction && marketplaceStatus.data.configured && marketplaceStatus.data.connected);
   const installmentCount = Number(form.installments);
   const normalizedInstallmentPrice = form.cardInstallmentPrice.trim() && isValidPriceString(form.cardInstallmentPrice)
     ? normalizePriceString(form.cardInstallmentPrice)
@@ -193,6 +241,42 @@ export default function AdminPage() {
       }
     : null;
 
+  async function startMercadoLivreConnection() {
+    setMonitorMessage("");
+    try {
+      const result = await connectMercadoLivre.mutateAsync(undefined);
+      window.location.assign(result.authorizationUrl);
+    } catch {
+      setMonitorMessage("Não foi possível iniciar a conexão com o Mercado Livre.");
+    }
+  }
+
+  async function toggleMonitorSchedule() {
+    const status = marketplaceStatus.data;
+    if (!status?.isProduction || !status.configured || !status.connected) return;
+    setMonitorMessage("");
+    try {
+      if (status.scheduleEnabled) await disableMonitorSchedule.mutateAsync(undefined);
+      else await configureMonitorSchedule.mutateAsync(undefined);
+      await marketplaceStatus.refetch();
+      setMonitorMessage("Agendamento atualizado.");
+    } catch {
+      setMonitorMessage("Não foi possível atualizar o agendamento agora.");
+    }
+  }
+
+  async function disconnectMarketplace() {
+    if (!window.confirm("Desconectar Mercado Livre e reiniciar os estados de disponibilidade monitorados?")) return;
+    setMonitorMessage("");
+    try {
+      await disconnectMercadoLivre.mutateAsync(undefined);
+      await Promise.all([marketplaceStatus.refetch(), utils.admin.list.invalidate(), utils.products.list.invalidate()]);
+      setMonitorMessage("Conta desconectada. Os produtos continuam visíveis com disponibilidade aguardando nova verificação.");
+    } catch {
+      setMonitorMessage("Não foi possível desconectar o Mercado Livre agora.");
+    }
+  }
+
   async function refreshCatalog() {
     await Promise.all([
       utils.admin.list.invalidate(),
@@ -201,7 +285,7 @@ export default function AdminPage() {
     ]);
   }
 
-  function beginEdit(product: CatalogProduct) {
+  function beginEdit(product: AdminProduct) {
     setForm({
       id: product.id,
       title: product.title,
@@ -217,6 +301,9 @@ export default function AdminPage() {
       shippingInfo: product.shippingInfo ?? "",
       promotionInfo: product.promotionInfo ?? "",
       affiliateUrl: product.affiliateUrl,
+      sourceProvider: product.sourceProvider || "manual",
+      sourceUrl: product.sourceUrl ?? "",
+      monitorEnabled: product.monitorEnabled === true,
       imageUrl: product.imageUrl,
       isActive: product.isActive,
     });
@@ -331,6 +418,14 @@ export default function AdminPage() {
       setFormError("Informe a condição de juros somente quando cadastrar as parcelas do cartão.");
       return;
     }
+    if (form.sourceProvider === "mercado_livre" && form.monitorEnabled) {
+      try {
+        if (new URL(form.sourceUrl.trim()).protocol !== "https:") throw new Error("URL inválida");
+      } catch {
+        setFormError("Informe a URL canônica HTTPS do item do Mercado Livre para ativar o monitor.");
+        return;
+      }
+    }
     const cardInterestFree = form.cardInterestChoice === "unknown" ? null : form.cardInterestChoice === "no-interest";
     try {
       let imageUrl = form.imageUrl;
@@ -361,13 +456,16 @@ export default function AdminPage() {
         promotionInfo: form.promotionInfo.trim() || null,
         imageUrl,
         affiliateUrl: form.affiliateUrl.trim(),
+        sourceProvider: form.sourceProvider,
+        sourceUrl: form.sourceUrl.trim() || null,
+        monitorEnabled: form.sourceProvider === "mercado_livre" && form.monitorEnabled,
         isActive: form.isActive,
       };
       if (form.id) {
-        await update.mutateAsync({ id: form.id, ...fields });
+        await update.mutateAsync({ id: form.id, ...fields } as Parameters<typeof update.mutateAsync>[0]);
         setNotice("Produto atualizado.");
       } else {
-        await create.mutateAsync(fields);
+        await create.mutateAsync(fields as Parameters<typeof create.mutateAsync>[0]);
         setNotice("Produto cadastrado.");
       }
       await refreshCatalog();
@@ -378,7 +476,7 @@ export default function AdminPage() {
     }
   }
 
-  async function deleteProduct(product: CatalogProduct) {
+  async function deleteProduct(product: AdminProduct) {
     if (!window.confirm(`Remover “${product.title}” da vitrine?`)) return;
     try {
       await remove.mutateAsync({ id: product.id });
@@ -444,6 +542,39 @@ export default function AdminPage() {
           <p>Cadastre a loja, os preços e as condições; o botão “Compre aqui” usará o link de afiliado informado.</p>
         </section>
 
+        <section className="admin-panel monitor-status-panel" aria-labelledby="marketplace-status-title">
+          <div className="monitor-panel-heading">
+            <div><h2 id="marketplace-status-title">Monitor de disponibilidade</h2><p>Quando ativo, o worker verifica itens vencidos a cada 15 minutos; ofertas confirmadas voltam a ser consultadas após seis horas e falhas têm até oito tentativas com backoff.</p></div>
+            {marketplaceStatus.data && <span className={`monitor-environment${marketplaceStatus.data.isProduction ? " is-production" : ""}`}>{marketplaceStatus.data.isProduction ? "Produção" : "Ambiente de teste"}</span>}
+          </div>
+          {marketplaceStatus.isLoading ? <p className="form-hint">Carregando estado da conexão…</p> : marketplaceStatus.error ? <p className="form-error" role="status">Não foi possível carregar o estado da conexão.</p> : marketplaceStatus.data && (
+            <>
+              <div className="monitor-status-grid">
+                <div><span>Credenciais</span><strong>{marketplaceStatus.data.configured ? "Configuradas" : "Não configuradas"}</strong></div>
+                <div><span>Conta Mercado Livre</span><strong>{marketplaceStatus.data.connected ? "Conectada" : "Não conectada"}</strong></div>
+                <div><span>Agendamento</span><strong>{marketplaceStatus.data.scheduleEnabled ? "Ativo" : "Inativo"}</strong></div>
+              </div>
+              <div className="monitor-controls">
+                <button className="small-button" type="button" onClick={() => void startMercadoLivreConnection()} disabled={!marketplaceStatus.data.configured || marketplaceStatus.data.connected || connectMercadoLivre.isPending}>
+                  {connectMercadoLivre.isPending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <ExternalLink aria-hidden="true" />}
+                  {marketplaceStatus.data.connected ? "Conta conectada" : "Conectar Mercado Livre"}
+                </button>
+                <button className="small-button" type="button" onClick={() => void toggleMonitorSchedule()} disabled={!marketplaceStatus.data.isProduction || !marketplaceStatus.data.configured || !marketplaceStatus.data.connected || configureMonitorSchedule.isPending || disableMonitorSchedule.isPending}>
+                  {(configureMonitorSchedule.isPending || disableMonitorSchedule.isPending) && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                  {marketplaceStatus.data.scheduleEnabled ? "Desativar agendamento" : "Ativar agendamento"}
+                </button>
+                {marketplaceStatus.data.connected && <button className="small-button" type="button" onClick={() => void disconnectMarketplace()} disabled={disconnectMercadoLivre.isPending || disableMonitorSchedule.isPending}>
+                  {disconnectMercadoLivre.isPending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                  Desconectar conta
+                </button>}
+              </div>
+              {!marketplaceStatus.data.configured && <p className="form-hint">A conexão ainda não pode ser iniciada neste ambiente.</p>}
+              {!marketplaceStatus.data.isProduction && <p className="form-hint">Ações de agendamento ficam disponíveis somente em produção.</p>}
+            </>
+          )}
+          {monitorMessage && <p className="form-hint monitor-message" role="status">{monitorMessage}</p>}
+        </section>
+
         <div className="admin-columns">
           <section className="admin-panel" aria-labelledby="form-title">
             <h2 id="form-title">{form.id ? "Editar produto" : "Adicionar produto"}</h2>
@@ -500,6 +631,24 @@ export default function AdminPage() {
               </div>
               <div className="form-field"><label htmlFor="product-category">Categoria</label><input id="product-category" required maxLength={80} value={form.category} onChange={event => setForm({ ...form, category: event.target.value })} placeholder="Ex.: Casa, tecnologia, beleza" /></div>
               <div className="form-field"><label htmlFor="product-store">Loja/vendedor (opcional)</label><input id="product-store" maxLength={120} value={form.storeName} onChange={event => setForm({ ...form, storeName: event.target.value })} placeholder="Ex.: TNT Info, Amazon, outra loja" /></div>
+              <section className="pricing-form-section monitor-form-section" aria-labelledby="monitor-form-title">
+                <div className="pricing-form-title"><h3 id="monitor-form-title">Origem e monitoramento</h3><p>O monitoramento usa a origem canônica selecionada; o link de afiliado permanece separado e continua sendo o destino de compra. O preço à vista e o original são sincronizados; Pix, cartão e frete seguem manuais.</p></div>
+                <div className="form-field">
+                  <label htmlFor="source-provider">Provedor da origem</label>
+                  <select id="source-provider" value={form.sourceProvider} onChange={event => setForm(current => ({ ...current, sourceProvider: event.target.value, monitorEnabled: event.target.value === "manual" ? false : current.monitorEnabled }))}>
+                    <option value="manual">Manual</option>
+                    {(marketplaceProviders.data ?? []).map(provider => <option key={provider.id} value={provider.id}>{provider.label}</option>)}
+                    {form.sourceProvider !== "manual" && !(marketplaceProviders.data ?? []).some(provider => provider.id === form.sourceProvider) && <option value={form.sourceProvider}>Provedor indisponível</option>}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label htmlFor="source-url">URL original/canônica da origem</label>
+                  <input id="source-url" type="url" pattern="https://.*" maxLength={2048} required={form.sourceProvider !== "manual" && form.monitorEnabled} value={form.sourceUrl} onChange={event => setForm(current => ({ ...current, sourceUrl: event.target.value }))} placeholder="https://www.loja.com.br/produto/..." />
+                  <span className="form-hint">Esta URL é a fonte do monitor; não use o link de afiliado como origem.</span>
+                </div>
+                <label className="form-checkbox"><input type="checkbox" checked={form.monitorEnabled} disabled={form.sourceProvider === "manual" || !(marketplaceProviders.data ?? []).some(provider => provider.id === form.sourceProvider)} onChange={event => setForm(current => ({ ...current, monitorEnabled: event.target.checked }))} /> Ativar monitor de disponibilidade</label>
+                {form.sourceProvider === "manual" && <span className="form-hint">Escolha um provedor com adaptador para ativar verificações automáticas.</span>}
+              </section>
               <section className="pricing-form-section" aria-labelledby="pricing-form-title">
                 <div className="pricing-form-title"><h3 id="pricing-form-title">Preços e condições</h3><p>Apenas o preço à vista é obrigatório; Pix, cartão, preço original e observações são opcionais. Aceita formatos como 9.699,00 ou 9,699.00, com vírgula ou ponto e separador de milhar.</p></div>
                 <div className="pricing-form-grid">
@@ -515,7 +664,7 @@ export default function AdminPage() {
                 {cardCalculation && <p className="card-calculation-preview" role="status" aria-live="polite">Total no cartão: {cardCalculation.installmentCount} × {formatMoneyBRL(cardCalculation.installmentPrice)} = <strong>{formatMoneyBRL(cardCalculation.total)}</strong></p>}
                 <span className="form-hint">O total no cartão será calculado pelo valor de cada parcela multiplicado pela quantidade informada.</span>
               </section>
-              <div className="form-field"><label htmlFor="affiliate-link">Link de afiliado da loja</label><input id="affiliate-link" type="url" pattern="https://.*" required maxLength={2048} value={form.affiliateUrl} onChange={event => setForm({ ...form, affiliateUrl: event.target.value })} placeholder="https://www.loja.com.br/produto/..." /><span className="form-hint">Use o link HTTPS da loja ou da plataforma de afiliados.</span></div>
+              <div className="form-field"><label htmlFor="affiliate-link">Link de afiliado da loja</label><input id="affiliate-link" type="url" pattern="https://.*" required maxLength={2048} value={form.affiliateUrl} onChange={event => setForm({ ...form, affiliateUrl: event.target.value })} placeholder="https://www.loja.com.br/produto/..." /><span className="form-hint">Destino do botão “Compre aqui”. Não é a origem do monitoramento.</span></div>
               <div className="form-field"><label htmlFor="product-image">Imagem do produto</label><input id="product-image" type="file" accept="image/jpeg,image/png,image/webp" onChange={event => chooseImage(event.target.files?.[0])} /><span className="form-hint">JPG, PNG ou WebP, até 5 MB; a imagem será otimizada antes do envio.</span>{imagePreview && <div className="admin-thumb"><img src={imagePreview} alt="Prévia do produto" decoding="async" /></div>}</div>
               <label className="form-checkbox"><input type="checkbox" checked={form.isActive} onChange={event => setForm({ ...form, isActive: event.target.checked })} /> Exibir este produto na vitrine pública</label>
               {formError && <p className="form-error" role="alert">{formError}</p>}
@@ -527,7 +676,7 @@ export default function AdminPage() {
           <section className="admin-panel" aria-labelledby="products-title">
             <h2 id="products-title">Produtos cadastrados {products.data ? `(${products.data.length})` : ""}</h2>
             {products.isLoading ? <div className="admin-empty">Carregando catálogo…</div> : products.error ? <div className="admin-empty">Não foi possível carregar o catálogo.<br /><button className="text-button" onClick={() => void products.refetch()}>Tentar novamente</button></div> : products.data?.length ? (
-              <div className="product-admin-list">{products.data.map(product => <AdminProductRow key={product.id} product={product} onEdit={beginEdit} onDelete={deleteProduct} />)}</div>
+              <div className="product-admin-list">{products.data.map(product => <AdminProductRow key={product.id} product={product} canVerify={canVerifyProducts} onEdit={beginEdit} onDelete={deleteProduct} />)}</div>
             ) : <div className="admin-empty"><ImageIcon aria-hidden="true" /><br />Nenhum produto cadastrado ainda.<br />Use o formulário para adicionar o primeiro.</div>}
           </section>
         </div>
@@ -536,7 +685,28 @@ export default function AdminPage() {
   );
 }
 
-function AdminProductRow({ product, onEdit, onDelete }: { product: CatalogProduct; onEdit: (product: CatalogProduct) => void; onDelete: (product: CatalogProduct) => void }) {
+function AdminProductRow({ product, canVerify, onEdit, onDelete }: { product: AdminProduct; canVerify: boolean; onEdit: (product: AdminProduct) => void; onDelete: (product: AdminProduct) => void }) {
+  const syncProduct = trpc.admin.syncProductNow.useMutation();
+  const utils = trpc.useUtils();
+  const [syncMessage, setSyncMessage] = useState("");
+
+  async function verifyNow() {
+    if (!canVerify) return;
+    setSyncMessage("");
+    try {
+      await syncProduct.mutateAsync({ id: product.id });
+      await Promise.all([
+        utils.admin.list.invalidate(),
+        utils.products.list.invalidate(),
+        utils.products.byId.invalidate({ id: product.id }),
+      ]);
+    } catch {
+      setSyncMessage("Não foi possível concluir a verificação. Tente novamente.");
+    }
+  }
+
+  const checkedAt = formatMonitorDate(product.lastCheckedAt);
+  const currentAvailability = getPublicProductAvailability(product.availabilityStatus, product.lastCheckedAt);
   return (
     <article className="admin-product-row">
       <div className="admin-thumb"><img src={product.imageUrl} alt="" loading="lazy" decoding="async" /></div>
@@ -544,6 +714,16 @@ function AdminProductRow({ product, onEdit, onDelete }: { product: CatalogProduc
         <div className="admin-row-title" title={product.title}>{product.title}</div>
         <div className="admin-row-meta">{product.category} · {formatMoneyBRL(product.price)}</div>
         <span className={`admin-row-status${product.isActive ? "" : " is-hidden"}`}>{product.isActive ? "Visível na vitrine" : "Oculto"}</span>
+        {product.monitorEnabled && <div className="admin-row-monitor">
+          <strong>{product.sourceProvider === "mercado_livre" ? "Mercado Livre" : "Origem"} · {availabilityText(currentAvailability)}</strong>
+          {checkedAt && <span>Última verificação: {checkedAt}</span>}
+          {product.lastSyncError && <span className="monitor-generic-error">{product.syncFailureCount >= PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS ? `Monitoramento automático pausado após ${PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS} falhas. Corrija a URL ou reconecte a conta e tente verificar novamente.` : "A última tentativa falhou; o preço e a disponibilidade anteriores foram mantidos."}</span>}
+          {syncMessage && <span className="monitor-generic-error" role="status">{syncMessage}</span>}
+          <button className="small-button" type="button" onClick={() => void verifyNow()} disabled={!canVerify || syncProduct.isPending} aria-label={`Verificar disponibilidade de ${product.title}`} title={canVerify ? undefined : "A verificação fica disponível após conexão em produção."}>
+            {syncProduct.isPending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
+            Verificar agora
+          </button>
+        </div>}
       </div>
       <div className="admin-row-actions">
         <button className="small-button" type="button" onClick={() => onEdit(product)} aria-label={`Editar ${product.title}`}><Pencil aria-hidden="true" /> Editar</button>

@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
+import { logInternalError } from "./errorLogging";
 
 export type HeartbeatJob = {
   name: string;
@@ -84,38 +85,18 @@ const callForge = async <T>(
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: `Heartbeat ${rpc} network error: ${String(error)}`,
-    });
+    logInternalError(`Heartbeat ${rpc} network request`, error);
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível atualizar a rotina automática." });
   }
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    throw mapForgeError(response, detail, rpc);
+    logInternalError(`Heartbeat ${rpc}`, new Error(`Platform returned HTTP ${response.status}`));
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível atualizar a rotina automática." });
   }
   return (await response.json()) as T;
-};
-
-const mapForgeError = (
-  response: Response,
-  detail: string,
-  rpc: string
-): TRPCError => {
-  const status = response.status;
-  let code: TRPCError["code"] = "INTERNAL_SERVER_ERROR";
-  if (status === 401) code = "UNAUTHORIZED";
-  else if (status === 403) code = "FORBIDDEN";
-  else if (status === 404) code = "NOT_FOUND";
-  else if (status === 400 || status === 422) code = "BAD_REQUEST";
-  else if (status === 409) code = "CONFLICT";
-  else if (status === 429) code = "TOO_MANY_REQUESTS";
-  return new TRPCError({
-    code,
-    message: `Heartbeat ${rpc} failed (${status})${detail ? `: ${detail}` : ""}`,
-  });
 };
 
 const stringifyPayload = (payload: unknown): string => {

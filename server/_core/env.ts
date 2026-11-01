@@ -8,6 +8,8 @@ export const ENV = {
   get adminEmail() { return process.env.ADMIN_EMAIL ?? ""; },
   get googleClientId() { return process.env.GOOGLE_CLIENT_ID ?? ""; },
   get googleClientSecret() { return process.env.GOOGLE_CLIENT_SECRET ?? ""; },
+  get mercadoLivreClientId() { return process.env.MERCADOLIVRE_CLIENT_ID ?? ""; },
+  get mercadoLivreClientSecret() { return process.env.MERCADOLIVRE_CLIENT_SECRET ?? ""; },
   get isProduction() { return process.env.NODE_ENV === "production"; },
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },
   get forgeApiKey() { return process.env.MANUS_API_KEY ?? ""; },

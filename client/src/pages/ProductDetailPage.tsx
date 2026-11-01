@@ -1,8 +1,8 @@
 import Brand from "@/components/Brand";
-import ProductPricing from "@/components/ProductPricing";
+import ProductPricing, { ProductBuyButton } from "@/components/ProductPricing";
 import { trpc } from "@/lib/trpc";
 import { buildProductPath } from "@shared/product-url";
-import { ArrowLeft, BadgeInfo, ExternalLink, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, BadgeInfo, Image as ImageIcon } from "lucide-react";
 import { useEffect } from "react";
 import { Link } from "wouter";
 import NotFound from "./NotFound";
@@ -69,9 +69,7 @@ export default function ProductDetailPage({ id, slug }: { id: number; slug?: str
           <h1 id="product-title">{product.title}</h1>
           <p className="detail-description">{product.description}</p>
           <ProductPricing product={product} />
-          <a className="buy-button detail-buy" href={product.affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer">
-            Compre aqui <ExternalLink aria-hidden="true" />
-          </a>
+          <ProductBuyButton product={product} className="detail-buy" />
           <p className="detail-note">Você continuará para a loja parceira para concluir a compra. Preços, frete, estoque e condições podem mudar; confirme o valor final no checkout. Este site pode receber comissão por este link de afiliado, sem custo adicional.</p>
         </section>
       </main>

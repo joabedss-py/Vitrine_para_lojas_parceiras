@@ -1,8 +1,9 @@
-import { and, asc, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, like, lt, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import type { InsertProduct, InsertUser } from "../drizzle/schema";
-import { products, users } from "../drizzle/schema";
+import type { InsertMarketplaceConnection, InsertProduct, InsertUser } from "../drizzle/schema";
+import { marketplaceConnections, productPriceHistory, products, scheduledJobs, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS } from "../shared/product-monitor";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -87,6 +88,27 @@ async function requireDb() {
   return db;
 }
 
+const publicProductSelection = {
+  id: products.id,
+  title: products.title,
+  description: products.description,
+  category: products.category,
+  price: products.price,
+  listPrice: products.listPrice,
+  pixPrice: products.pixPrice,
+  cardInstallmentPrice: products.cardInstallmentPrice,
+  installments: products.installments,
+  cardInterestFree: products.cardInterestFree,
+  storeName: products.storeName,
+  shippingInfo: products.shippingInfo,
+  promotionInfo: products.promotionInfo,
+  imageUrl: products.imageUrl,
+  affiliateUrl: products.affiliateUrl,
+  monitorEnabled: products.monitorEnabled,
+  availabilityStatus: products.availabilityStatus,
+  lastCheckedAt: products.lastCheckedAt,
+};
+
 export async function listProducts(filters: {
   search?: string;
   category?: string;
@@ -107,7 +129,7 @@ export async function listProducts(filters: {
     if (matchingText) conditions.push(matchingText);
   }
   return db
-    .select()
+    .select(publicProductSelection)
     .from(products)
     .where(and(...conditions))
     .orderBy(desc(products.createdAt), desc(products.id))
@@ -123,11 +145,7 @@ export async function listAdminProducts() {
 export async function getProductById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db
-    .select()
-    .from(products)
-    .where(and(eq(products.id, id), eq(products.isActive, true)))
-    .limit(1);
+  const result = await db.select(publicProductSelection).from(products).where(and(eq(products.id, id), eq(products.isActive, true))).limit(1);
   return result[0];
 }
 
@@ -163,5 +181,160 @@ export async function updateProduct(id: number, product: Omit<InsertProduct, "id
 
 export async function deleteProduct(id: number) {
   const db = await requireDb();
-  await db.delete(products).where(eq(products.id, id));
+  await db.transaction(async tx => {
+    await tx.delete(productPriceHistory).where(eq(productPriceHistory.productId, id));
+    await tx.delete(products).where(eq(products.id, id));
+  });
+}
+
+export async function getMarketplaceConnection(provider: string) {
+  const db = await requireDb();
+  const result = await db.select().from(marketplaceConnections).where(eq(marketplaceConnections.provider, provider)).limit(1);
+  return result[0];
+}
+
+export async function saveMarketplaceConnection(connection: InsertMarketplaceConnection) {
+  const db = await requireDb();
+  const now = new Date();
+  await db.insert(marketplaceConnections).values({ ...connection, connectedAt: now, updatedAt: now }).onDuplicateKeyUpdate({
+    set: {
+      accountId: connection.accountId,
+      accessTokenCiphertext: connection.accessTokenCiphertext,
+      refreshTokenCiphertext: connection.refreshTokenCiphertext,
+      accessTokenExpiresAt: connection.accessTokenExpiresAt,
+      scope: connection.scope,
+      connectedAt: now,
+      updatedAt: now,
+    },
+  });
+}
+
+export async function deleteMarketplaceConnection(provider: string) {
+  const db = await requireDb();
+  await db.delete(marketplaceConnections).where(eq(marketplaceConnections.provider, provider));
+}
+
+export async function resetProviderMonitoredProducts(provider: string) {
+  const db = await requireDb();
+  await db.update(products).set({
+    availabilityStatus: "unknown",
+    lastCheckedAt: null,
+    nextCheckAt: null,
+    lastSyncError: null,
+    syncFailureCount: 0,
+  }).where(eq(products.sourceProvider, provider));
+}
+
+export async function restartProviderMonitors(provider: string) {
+  const db = await requireDb();
+  await db.update(products).set({ syncFailureCount: 0, lastSyncError: null, nextCheckAt: new Date() })
+    .where(and(eq(products.sourceProvider, provider), eq(products.monitorEnabled, true)));
+}
+
+export async function getScheduledJob(name: string) {
+  const db = await requireDb();
+  const result = await db.select().from(scheduledJobs).where(eq(scheduledJobs.name, name)).limit(1);
+  return result[0];
+}
+
+export async function claimScheduledJobRun(name: string, taskUid: string, now: Date, leaseMs: number) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const [job] = await tx.select({ taskUid: scheduledJobs.taskUid, enabled: scheduledJobs.enabled, leaseUntil: scheduledJobs.leaseUntil })
+      .from(scheduledJobs).where(eq(scheduledJobs.name, name)).for("update").limit(1);
+    if (!job || !job.enabled || job.taskUid !== taskUid || (job.leaseUntil && job.leaseUntil > now)) return false;
+    await tx.update(scheduledJobs).set({ leaseUntil: new Date(now.getTime() + leaseMs), updatedAt: now })
+      .where(and(eq(scheduledJobs.name, name), eq(scheduledJobs.taskUid, taskUid), eq(scheduledJobs.enabled, true)));
+    return true;
+  });
+}
+
+export async function saveScheduledJob(name: string, taskUid: string, cronExpression: string, enabled = true) {
+  const db = await requireDb();
+  const now = new Date();
+  await db.insert(scheduledJobs).values({ name, taskUid, cronExpression, enabled, createdAt: now, updatedAt: now }).onDuplicateKeyUpdate({
+    set: { taskUid, cronExpression, enabled, updatedAt: now },
+  });
+}
+
+export async function setScheduledJobEnabled(name: string, enabled: boolean) {
+  const db = await requireDb();
+  await db.update(scheduledJobs).set({ enabled, updatedAt: new Date() }).where(eq(scheduledJobs.name, name));
+}
+
+export async function markScheduledJobRun(name: string, taskUid: string, lastRunAt: Date) {
+  const db = await requireDb();
+  await db.update(scheduledJobs).set({ lastRunAt, leaseUntil: null, updatedAt: lastRunAt })
+    .where(and(eq(scheduledJobs.name, name), eq(scheduledJobs.taskUid, taskUid)));
+}
+
+export async function listDueMonitorProducts(now: Date, limit = 200) {
+  const db = await requireDb();
+  return db.select().from(products)
+    .where(and(
+      eq(products.monitorEnabled, true),
+      lt(products.syncFailureCount, PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS),
+      or(isNull(products.nextCheckAt), lte(products.nextCheckAt, now)),
+    ))
+    .orderBy(asc(products.nextCheckAt), asc(products.id))
+    .limit(limit);
+}
+
+export async function updateProductMonitorSuccess(
+  id: number,
+  snapshot: { provider: string; price: string; listPrice?: string | null; availability: "available" | "out_of_stock" | "unavailable" },
+  checkedAt: Date,
+  nextCheckAt: Date,
+) {
+  const db = await requireDb();
+  await db.transaction(async tx => {
+    const existing = await tx.select({ price: products.price }).from(products)
+      .where(and(eq(products.id, id), or(isNull(products.lastCheckedAt), lte(products.lastCheckedAt, checkedAt))))
+      .for("update").limit(1);
+    if (!existing[0]) return;
+    if (String(existing[0].price) !== snapshot.price) {
+      await tx.insert(productPriceHistory).values({
+        productId: id,
+        provider: snapshot.provider,
+        previousPrice: String(existing[0].price),
+        currentPrice: snapshot.price,
+        checkedAt,
+      });
+    }
+    await tx.update(products).set({
+      price: snapshot.price,
+      ...(snapshot.listPrice !== undefined ? { listPrice: snapshot.listPrice } : {}),
+      availabilityStatus: snapshot.availability,
+      lastCheckedAt: checkedAt,
+      nextCheckAt,
+      lastSyncError: null,
+      syncFailureCount: 0,
+    }).where(eq(products.id, id));
+  });
+}
+
+export async function updateProductMonitorNotFound(id: number, checkedAt: Date, nextCheckAt: Date) {
+  const db = await requireDb();
+  await db.update(products).set({
+    availabilityStatus: "unavailable",
+    lastCheckedAt: checkedAt,
+    nextCheckAt,
+    lastSyncError: null,
+    syncFailureCount: 0,
+  }).where(and(eq(products.id, id), or(isNull(products.lastCheckedAt), lte(products.lastCheckedAt, checkedAt))));
+}
+
+export async function updateProductMonitorFailure(
+  id: number,
+  errorCode: string,
+  failureCount: number,
+  nextCheckAt: Date | null,
+  checkedAt: Date,
+) {
+  const db = await requireDb();
+  await db.update(products).set({
+    nextCheckAt,
+    lastSyncError: errorCode,
+    syncFailureCount: failureCount,
+  }).where(and(eq(products.id, id), or(isNull(products.lastCheckedAt), lte(products.lastCheckedAt, checkedAt))));
 }

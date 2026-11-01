@@ -8,6 +8,10 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
 import { logInternalError } from "./_core/errorLogging";
+import { startMercadoLivreOAuth } from "./_core/marketplaceOAuth";
+import { configureProductMonitorSchedule, disableProductMonitorSchedule, disconnectMercadoLivre as disconnectMercadoLivreConnection, syncProductNow } from "./productMonitor";
+import { getMarketplaceProvider, listMarketplaceProviders } from "./marketplaces/registry";
+import { mercadoLivreCredentialsConfigured } from "./marketplaces/mercadoLivreOAuth";
 import { adminProcedure, isAdminAuthorized, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
@@ -42,6 +46,9 @@ const productFieldsBase = z.object({
   imageUrl: z.string().min(1).max(1000).refine(isProductImagePath, "Imagem inválida"),
   affiliateUrl: z.string().url().max(2048).refine(isSecureAffiliateUrl, "Use um link HTTPS válido da loja ou da plataforma de afiliados."),
   isActive: z.boolean(),
+  sourceProvider: z.string().trim().min(1).max(40).default("manual"),
+  sourceUrl: z.union([z.string().trim().max(2048), z.literal(""), z.null()]).transform(value => value || null).default(null),
+  monitorEnabled: z.boolean().default(false),
 });
 
 function validateProductPricing(
@@ -59,7 +66,32 @@ function validateProductPricing(
   }
 }
 
-const productFields = productFieldsBase.superRefine(validateProductPricing);
+function validateProductMonitor(
+  fields: Pick<z.output<typeof productFieldsBase>, "sourceProvider" | "sourceUrl" | "monitorEnabled">,
+  context: z.RefinementCtx,
+) {
+  if (!fields.monitorEnabled) return;
+  if (fields.sourceProvider === "manual") {
+    context.addIssue({ code: "custom", path: ["sourceProvider"], message: "Escolha uma loja com adaptador de monitoramento." });
+    return;
+  }
+  if (!fields.sourceUrl) {
+    context.addIssue({ code: "custom", path: ["sourceUrl"], message: "Informe a URL original do produto, separada do link de afiliado." });
+    return;
+  }
+  try {
+    getMarketplaceProvider(fields.sourceProvider).parseItemId(fields.sourceUrl);
+  } catch {
+    context.addIssue({ code: "custom", path: ["sourceUrl"], message: "Informe uma URL canônica válida da loja escolhida." });
+  }
+}
+
+function validateProductFields(fields: z.output<typeof productFieldsBase>, context: z.RefinementCtx) {
+  validateProductPricing(fields, context);
+  validateProductMonitor(fields, context);
+}
+
+const productFields = productFieldsBase.superRefine(validateProductFields);
 
 function isProductImagePath(value: string) {
   return value.startsWith("/manus-storage/") &&
@@ -113,6 +145,26 @@ export const appRouter = router({
   }),
   admin: router({
     list: adminProcedure.query(() => db.listAdminProducts()),
+    marketplaceProviders: adminProcedure.query(() => listMarketplaceProviders()),
+    marketplaceStatus: adminProcedure.query(async () => {
+      const [connection, schedule] = await Promise.all([
+        db.getMarketplaceConnection("mercado_livre"),
+        db.getScheduledJob("vitrineml-product-monitor"),
+      ]);
+      return {
+        configured: mercadoLivreCredentialsConfigured(),
+        connected: Boolean(connection),
+        scheduleEnabled: Boolean(schedule?.enabled),
+        isProduction: ENV.isProduction,
+      };
+    }),
+    connectMercadoLivre: adminProcedure.mutation(({ ctx }) => startMercadoLivreOAuth(ctx.res)),
+    disconnectMercadoLivre: adminProcedure.mutation(() => disconnectMercadoLivreConnection()),
+    configureMonitorSchedule: adminProcedure.mutation(() => configureProductMonitorSchedule()),
+    disableMonitorSchedule: adminProcedure.mutation(() => disableProductMonitorSchedule()),
+    syncProductNow: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(({ input }) => syncProductNow(input.id)),
     uploadImage: adminProcedure
       .input(z.object({
         contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -136,13 +188,25 @@ export const appRouter = router({
       return { id };
     }),
     update: adminProcedure
-      .input(productFieldsBase.extend({ id: z.number().int().positive() }).superRefine(validateProductPricing))
+      .input(productFieldsBase.extend({ id: z.number().int().positive() }).superRefine(validateProductFields))
       .mutation(async ({ input }) => {
         const { id, ...fields } = input;
-        if (!(await db.getAdminProductById(id))) {
+        const existing = await db.getAdminProductById(id);
+        if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado" });
         }
-        await db.updateProduct(id, fields);
+        const sourceChanged = existing.sourceProvider !== fields.sourceProvider ||
+          existing.sourceUrl !== fields.sourceUrl || existing.monitorEnabled !== fields.monitorEnabled;
+        await db.updateProduct(id, {
+          ...fields,
+          ...(sourceChanged ? {
+            availabilityStatus: "unknown" as const,
+            lastCheckedAt: null,
+            nextCheckAt: fields.monitorEnabled ? new Date() : null,
+            lastSyncError: null,
+            syncFailureCount: 0,
+          } : {}),
+        });
         return { success: true } as const;
       }),
     delete: adminProcedure
