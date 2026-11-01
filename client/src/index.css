@@ -145,6 +145,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .state-panel svg { width: 30px; height: 30px; margin-bottom: 14px; color: var(--accent); }
 .state-action { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border-radius: 8px; background: var(--primary); color: white; font-size: 13px; font-weight: 600; }
 .state-action:hover { background: #1f303d; }
+.login-options { display: flex; flex-direction: column; align-items: stretch; gap: 10px; width: min(100%, 280px); margin: 0 auto; }
+.login-options .state-action { width: 100%; gap: 8px; text-decoration: none; cursor: pointer; }
+.login-options .google-action { border: 1px solid var(--border); background: white; color: var(--primary); }
+.login-options .google-action:hover { background: #f7f7f5; color: var(--primary); }
+.google-mark { color: #4285f4; font-size: 16px; font-weight: 800; line-height: 1; }
 
 .admin-shell { padding-bottom: 60px; }
 .admin-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 0; border-bottom: 1px solid var(--border); }

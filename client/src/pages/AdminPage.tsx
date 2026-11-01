@@ -43,6 +43,7 @@ async function fileToBase64(file: File) {
 
 export default function AdminPage() {
   const auth = trpc.auth.me.useQuery(undefined, { retry: false });
+  const providers = trpc.auth.providers.useQuery();
   const logout = trpc.auth.logout.useMutation();
   const products = trpc.admin.list.useQuery(undefined, { enabled: auth.data?.role === "admin" });
   const utils = trpc.useUtils();
@@ -60,6 +61,14 @@ export default function AdminPage() {
   useEffect(() => {
     if (imagePreview.startsWith("blob:")) return () => URL.revokeObjectURL(imagePreview);
   }, [imagePreview]);
+
+  useEffect(() => {
+    const googleStatus = new URLSearchParams(window.location.search).get("google");
+    if (googleStatus === "error") setLoginError("Não foi possível concluir o login com Google. Tente novamente.");
+    else if (googleStatus === "cancelled") setLoginError("O login com Google foi cancelado.");
+    else if (googleStatus === "unavailable") setLoginError("O login com Google ainda não está configurado neste ambiente.");
+    else if (googleStatus === "unauthorized") setLoginError("Entre com o e-mail Google autorizado para administrar esta vitrine.");
+  }, []);
 
   const isSaving = uploadImage.isPending || create.isPending || update.isPending;
   const isAuthorized = auth.data?.role === "admin";
@@ -178,7 +187,25 @@ export default function AdminPage() {
     return (
       <div className="site-shell">
         <header className="admin-top"><Brand /><Link className="back-link" href="/"><ArrowLeft aria-hidden="true" /> Voltar à vitrine</Link></header>
-        <main className="state-panel"><div><LogOut aria-hidden="true" /><h2>Entre para administrar a vitrine</h2><p>Use a conta Manus autorizada para cadastrar, editar ou remover produtos e seus links de afiliado.</p>{loginError && <p className="form-error">{loginError}</p>}<button className="state-action" onClick={() => { try { startLogin(); } catch (error) { setLoginError(error instanceof Error ? error.message : "Não foi possível iniciar o login."); } }}>Entrar com Manus</button></div></main>
+        <main className="state-panel">
+          <div>
+            <LogOut aria-hidden="true" />
+            <h2>Entre para administrar a vitrine</h2>
+            <p>Entre com a conta Google autorizada ou, como alternativa, com sua conta Manus para cadastrar, editar ou remover produtos e seus links de afiliado.</p>
+            {loginError && <p className="form-error" role="alert">{loginError}</p>}
+            <div className="login-options">
+              {providers.data?.google && (
+                <a className="state-action google-action" href="/api/oauth/google/start">
+                  <span className="google-mark" aria-hidden="true">G</span>
+                  Entrar com Google
+                </a>
+              )}
+              <button className="state-action" onClick={() => { try { startLogin(); } catch (error) { setLoginError(error instanceof Error ? error.message : "Não foi possível iniciar o login."); } }}>
+                Entrar com Manus
+              </button>
+            </div>
+          </div>
+        </main>
       </div>
     );
   }

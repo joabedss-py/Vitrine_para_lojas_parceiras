@@ -5,6 +5,7 @@ import { z } from "zod";
 import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { ENV } from "./_core/env";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
@@ -73,6 +74,9 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    providers: publicProcedure.query(() => ({
+      google: Boolean(ENV.googleClientId && ENV.googleClientSecret),
+    })),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });

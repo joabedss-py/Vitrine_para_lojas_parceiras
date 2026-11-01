@@ -6,6 +6,8 @@ export const ENV = {
   get oAuthServerUrl() { return process.env.MANUS_OAUTH_API_URL ?? ""; },
   get ownerOpenId() { return process.env.OWNER_OPEN_ID ?? ""; },
   get adminEmail() { return process.env.ADMIN_EMAIL ?? ""; },
+  get googleClientId() { return process.env.GOOGLE_CLIENT_ID ?? ""; },
+  get googleClientSecret() { return process.env.GOOGLE_CLIENT_SECRET ?? ""; },
   get isProduction() { return process.env.NODE_ENV === "production"; },
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },
   get forgeApiKey() { return process.env.MANUS_API_KEY ?? ""; },
