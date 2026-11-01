@@ -10,7 +10,7 @@ import { Link } from "wouter";
 const PRODUCT_PAGE_SIZE = 12;
 
 function ProductCard({ product }: { product: CatalogProduct }) {
-  const productPath = buildProductPath(product.id, product.title);
+  const productPath = buildProductPath(product.id);
   return (
     <article className="product-card">
       <Link href={productPath} className="product-image-link" aria-label={`Ver detalhes de ${product.title}`}>

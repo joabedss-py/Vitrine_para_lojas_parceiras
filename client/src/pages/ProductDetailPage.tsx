@@ -14,7 +14,7 @@ export default function ProductDetailPage({ id, slug }: { id: number; slug?: str
     const product = productQuery.data;
     if (!product) return;
 
-    const canonicalPath = buildProductPath(product.id, product.title);
+    const canonicalPath = buildProductPath(product.id);
     if (window.location.pathname !== canonicalPath) {
       window.history.replaceState(window.history.state, "", canonicalPath);
     }
