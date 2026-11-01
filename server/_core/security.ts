@@ -6,7 +6,7 @@ export const PRODUCTION_CONTENT_SECURITY_POLICY = [
   "object-src 'none'",
   "script-src 'self'",
   "style-src 'self'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://d36hbw14aib5lz.cloudfront.net",
   "font-src 'self'",
   "connect-src 'self'",
   "form-action 'self'",

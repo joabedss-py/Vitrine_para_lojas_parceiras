@@ -22,6 +22,7 @@ describe("security headers", () => {
     expect(csp).not.toMatch(/unsafe-inline|unsafe-eval|\*/);
     expect(csp).toContain("script-src 'self'");
     expect(csp).toContain("style-src 'self'");
+    expect(csp).toContain("img-src 'self' data: blob: https://d36hbw14aib5lz.cloudfront.net");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(headers.get("x-frame-options")).toBe("DENY");
     expect(headers.get("strict-transport-security")).toBe("max-age=31536000");
