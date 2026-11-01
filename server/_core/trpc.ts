@@ -4,7 +4,17 @@ import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { ENV } from "./env";
 
-const t = initTRPC.context<TrpcContext>().create({ transformer: superjson });
+const t = initTRPC.context<TrpcContext>().create({
+  transformer: superjson,
+  errorFormatter({ shape, error }) {
+    if (error.code !== "INTERNAL_SERVER_ERROR") return shape;
+    return {
+      ...shape,
+      message: "Ocorreu um erro interno. Tente novamente.",
+      data: { ...shape.data, stack: undefined },
+    };
+  },
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;

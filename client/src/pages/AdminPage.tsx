@@ -373,8 +373,8 @@ export default function AdminPage() {
       await refreshCatalog();
       resetForm();
       setNotice(form.id ? "Produto atualizado." : "Produto cadastrado.");
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Não foi possível salvar o produto.");
+    } catch {
+      setFormError("Não foi possível salvar o produto. Tente novamente.");
     }
   }
 
@@ -386,8 +386,8 @@ export default function AdminPage() {
       if (form.id === product.id) resetForm();
       setNotice("Produto removido da vitrine.");
       setFormError("");
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Não foi possível remover o produto.");
+    } catch {
+      setFormError("Não foi possível remover o produto. Tente novamente.");
     }
   }
 
@@ -412,7 +412,7 @@ export default function AdminPage() {
                   Entrar com Google
                 </a>
               )}
-              <button className="state-action" onClick={() => { try { startLogin(); } catch (error) { setLoginError(error instanceof Error ? error.message : "Não foi possível iniciar o login."); } }}>
+              <button className="state-action" onClick={() => { try { startLogin(); } catch { setLoginError("Não foi possível iniciar o login. Tente novamente."); } }}>
                 Entrar com Manus
               </button>
             </div>
@@ -476,17 +476,12 @@ export default function AdminPage() {
                   </div>
                   <textarea
                     ref={descriptionRef}
-                    className="description-notepad-textarea"
+                    className={`description-notepad-textarea ${descriptionEditorSettings.fontFamily === "Cascadia Mono" ? "font-cascadia" : descriptionEditorSettings.fontFamily === "Consolas" ? "font-consolas" : "font-courier"} text-size-${descriptionEditorSettings.fontSize}${descriptionEditorSettings.wordWrap ? " wrapped" : " no-wrap"}`}
                     id="product-description"
                     required
                     maxLength={6000}
                     value={form.description}
                     wrap={descriptionEditorSettings.wordWrap ? "soft" : "off"}
-                    style={{
-                      fontFamily: descriptionEditorSettings.fontFamily,
-                      fontSize: `${descriptionEditorSettings.fontSize}px`,
-                      whiteSpace: descriptionEditorSettings.wordWrap ? "pre-wrap" : "pre",
-                    }}
                     onChange={event => {
                       setForm(current => ({ ...current, description: event.target.value }));
                       updateDescriptionCursor(event.currentTarget);
@@ -531,7 +526,7 @@ export default function AdminPage() {
 
           <section className="admin-panel" aria-labelledby="products-title">
             <h2 id="products-title">Produtos cadastrados {products.data ? `(${products.data.length})` : ""}</h2>
-            {products.isLoading ? <div className="admin-empty">Carregando catálogo…</div> : products.error ? <div className="admin-empty">{products.error.message}<br /><button className="text-button" onClick={() => void products.refetch()}>Tentar novamente</button></div> : products.data?.length ? (
+            {products.isLoading ? <div className="admin-empty">Carregando catálogo…</div> : products.error ? <div className="admin-empty">Não foi possível carregar o catálogo.<br /><button className="text-button" onClick={() => void products.refetch()}>Tentar novamente</button></div> : products.data?.length ? (
               <div className="product-admin-list">{products.data.map(product => <AdminProductRow key={product.id} product={product} onEdit={beginEdit} onDelete={deleteProduct} />)}</div>
             ) : <div className="admin-empty"><ImageIcon aria-hidden="true" /><br />Nenhum produto cadastrado ainda.<br />Use o formulário para adicionar o primeiro.</div>}
           </section>

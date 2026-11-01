@@ -46,7 +46,7 @@ export default function ProductDetailPage({ id, slug }: { id: number; slug?: str
   }
   if (productQuery.error?.data?.code === "NOT_FOUND") return <NotFound />;
   if (productQuery.error || !productQuery.data) {
-    return <div className="site-shell"><div className="state-panel"><div><BadgeInfo aria-hidden="true" /><h2>Não foi possível carregar este produto</h2><p>{productQuery.error?.message ?? "Tente novamente em alguns instantes."}</p><button className="state-action" onClick={() => void productQuery.refetch()}>Tentar novamente</button></div></div></div>;
+    return <div className="site-shell"><div className="state-panel"><div><BadgeInfo aria-hidden="true" /><h2>Não foi possível carregar este produto</h2><p>Tente novamente em alguns instantes.</p><button className="state-action" onClick={() => void productQuery.refetch()}>Tentar novamente</button></div></div></div>;
   }
 
   const product = productQuery.data;

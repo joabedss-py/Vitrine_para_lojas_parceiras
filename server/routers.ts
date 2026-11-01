@@ -7,6 +7,7 @@ import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
+import { logInternalError } from "./_core/errorLogging";
 import { adminProcedure, isAdminAuthorized, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
@@ -125,7 +126,8 @@ export const appRouter = router({
         const extension = input.contentType === "image/jpeg" ? "jpg" : input.contentType.slice("image/".length);
         try {
           return await storagePut(`affiliate-products/${randomUUID()}.${extension}`, bytes, input.contentType);
-        } catch {
+        } catch (error) {
+          logInternalError("Product image upload", error);
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível guardar a imagem. Tente novamente." });
         }
       }),

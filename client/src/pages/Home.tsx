@@ -108,7 +108,7 @@ export default function Home() {
           {productsQuery.isLoading ? (
             <div className="state-panel"><div><ShoppingBag aria-hidden="true" /><h2>Carregando produtos</h2><p>Estamos preparando a vitrine para você.</p></div></div>
           ) : productsQuery.error ? (
-            <div className="state-panel"><div><BadgeInfo aria-hidden="true" /><h2>Não foi possível carregar a vitrine</h2><p>{productsQuery.error.message}</p><button className="state-action" onClick={() => void productsQuery.refetch()}>Tentar novamente</button></div></div>
+            <div className="state-panel"><div><BadgeInfo aria-hidden="true" /><h2>Não foi possível carregar a vitrine</h2><p>Tente novamente em alguns instantes.</p><button className="state-action" onClick={() => void productsQuery.refetch()}>Tentar novamente</button></div></div>
           ) : products.length === 0 ? (
             <div className="state-panel"><div><ShoppingBag aria-hidden="true" /><h2>{search || category ? "Nenhum produto encontrado" : "A vitrine está sendo preparada"}</h2><p>{search || category ? "Experimente mudar a busca ou escolher outra categoria." : "Em breve, esta seleção terá produtos com imagens, detalhes e links para lojas parceiras."}</p>{(search || category) && <button className="state-action" onClick={() => { setSearch(""); setCategory(""); setPage(0); }}>Limpar filtros</button>}</div></div>
           ) : (

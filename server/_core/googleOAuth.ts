@@ -7,6 +7,7 @@ import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { ENV } from "./env";
 import { sdk } from "./sdk";
+import { logInternalError } from "./errorLogging";
 
 const GOOGLE_CALLBACK_URI = "https://vitrineml-ecps2ye7.manus.space/api/oauth/google/callback";
 const GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -186,8 +187,8 @@ export function registerGoogleOAuthRoutes(app: Express) {
         maxAge: ONE_YEAR_MS,
       });
       res.redirect(302, "/admin");
-    } catch {
-      console.error("[GoogleOAuth] Callback failed");
+    } catch (error) {
+      logInternalError("GoogleOAuth callback", error);
       redirectToAdmin(res, "error");
     }
   });

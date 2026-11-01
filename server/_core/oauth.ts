@@ -4,6 +4,7 @@ import type { Express, Request, Response } from "express";
 import * as db from "../db";
 import { getSessionCookieOptions } from "./cookies";
 import { sdk } from "./sdk";
+import { logInternalError } from "./errorLogging";
 
 function getQueryParam(req: Request, key: string): string | undefined {
   const value = req.query[key];
@@ -16,7 +17,7 @@ export function registerOAuthRoutes(app: Express) {
     const state = getQueryParam(req, "state");
 
     if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
+      res.status(400).json({ error: "Não foi possível concluir o login. Tente novamente." });
       return;
     }
 
@@ -26,7 +27,7 @@ export function registerOAuthRoutes(app: Express) {
     const { nonce } = decodeOAuthState(state);
     const expectedNonce = parseCookieHeader(req.headers.cookie ?? "")[OAUTH_STATE_COOKIE];
     if (!nonce || nonce !== expectedNonce) {
-      res.status(403).json({ error: "invalid oauth state" });
+      res.status(403).json({ error: "Não foi possível concluir o login. Tente novamente." });
       return;
     }
     res.clearCookie(OAUTH_STATE_COOKIE, { path: "/", secure: true, sameSite: "none" });
@@ -36,7 +37,7 @@ export function registerOAuthRoutes(app: Express) {
       const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
 
       if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
+        res.status(400).json({ error: "Não foi possível concluir o login. Tente novamente." });
         return;
       }
 
@@ -58,8 +59,8 @@ export function registerOAuthRoutes(app: Express) {
 
       res.redirect(302, "/");
     } catch (error) {
-      console.error("[OAuth] Callback failed", error instanceof Error ? error.message : "unknown error");
-      res.status(500).json({ error: "OAuth callback failed" });
+      logInternalError("OAuth callback", error);
+      res.status(500).json({ error: "Não foi possível concluir o login. Tente novamente." });
     }
   });
 }

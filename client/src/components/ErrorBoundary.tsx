@@ -8,17 +8,16 @@ interface Props {
 
 interface State {
   hasError: boolean;
-  error: Error | null;
 }
 
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  static getDerivedStateFromError(_error: Error): State {
+    return { hasError: true };
   }
 
   render() {
@@ -26,19 +25,9 @@ class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex items-center justify-center min-h-screen p-8 bg-background">
           <div className="flex flex-col items-center w-full max-w-2xl p-8">
-            <AlertTriangle
-              size={48}
-              className="text-destructive mb-6 flex-shrink-0"
-            />
-
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
-
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
-
+            <AlertTriangle size={48} className="text-destructive mb-6 flex-shrink-0" aria-hidden="true" />
+            <h2 className="text-xl mb-4">Não foi possível carregar esta página.</h2>
+            <p className="mb-6 text-center text-muted-foreground">Tente recarregar. Se o problema continuar, entre em contato com o administrador.</p>
             <button
               onClick={() => window.location.reload()}
               className={cn(
@@ -47,8 +36,8 @@ class ErrorBoundary extends Component<Props, State> {
                 "hover:opacity-90 cursor-pointer"
               )}
             >
-              <RotateCcw size={16} />
-              Reload Page
+              <RotateCcw size={16} aria-hidden="true" />
+              Recarregar a página
             </button>
           </div>
         </div>
