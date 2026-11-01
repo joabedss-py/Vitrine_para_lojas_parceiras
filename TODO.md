@@ -23,3 +23,5 @@
 - [x] **Corrigir bloqueio de cadastro de preços** — O formulário aceita valores como `9.699,00` sem bloqueio nativo do navegador; a validação ocorre pelo parser monetário do sistema e apresenta mensagem compreensível quando o formato é inválido, preservando os campos opcionais.
 
 - [x] **URL e título específicos por produto** — Ao clicar em um produto, abrir uma URL que contenha o código/ID do produto e um trecho legível do nome dele; a página e o título do navegador devem identificar aquele produto. Manter links antigos de produto compatíveis e atualizar o manifesto de rotas.
+
+- [x] **Reduzir um pouco o tamanho dos nomes dos produtos** — Diminuir moderadamente a tipografia dos títulos dos produtos nos cards da vitrine, na página de detalhes e na lista administrativa, incluindo telas móveis, preservando a hierarquia e a legibilidade e sem alterar a tipografia dos preços.
