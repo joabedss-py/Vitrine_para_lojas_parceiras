@@ -1,11 +1,11 @@
 import Brand from "@/components/Brand";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
+import { formatMoneyBRL } from "@shared/price";
 import { ArrowUpRight, BadgeInfo, ExternalLink, Search, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
 
-const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const PRODUCT_PAGE_SIZE = 12;
 
 function ProductCard({ product }: { product: CatalogProduct }) {
@@ -18,7 +18,7 @@ function ProductCard({ product }: { product: CatalogProduct }) {
       <div className="product-card-body">
         <h3 className="product-card-title"><Link href={`/produto/${product.id}`}>{product.title}</Link></h3>
         <p className="product-card-description">{product.description}</p>
-        <p className="product-price">{money.format(Number(product.price))}</p>
+        <p className="product-price">{formatMoneyBRL(product.price)}</p>
         <a className="buy-button" href={product.affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer">
           Compre aqui <ExternalLink aria-hidden="true" />
         </a>

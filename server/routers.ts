@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { isValidPriceString, normalizePriceString } from "../shared/price";
 import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -9,11 +10,15 @@ import { ENV } from "./_core/env";
 import { adminProcedure, isAdminAuthorized, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
+const priceInput = z.string().trim()
+  .refine(isValidPriceString, "Informe um preço positivo com até 63 dígitos e duas casas decimais.")
+  .transform(normalizePriceString);
+
 const productFields = z.object({
   title: z.string().trim().min(1).max(180),
   description: z.string().trim().min(1).max(6000),
   category: z.string().trim().min(1).max(80),
-  price: z.number().finite().positive().max(99_999_999.99),
+  price: priceInput,
   imageUrl: z.string().min(1).max(1000).refine(isProductImagePath, "Imagem inválida"),
   affiliateUrl: z.string().url().max(2048),
   isActive: z.boolean(),
@@ -117,10 +122,7 @@ export const appRouter = router({
       }),
     create: adminProcedure.input(productFields).mutation(async ({ input }) => {
       validateAffiliateUrl(input.affiliateUrl);
-      const id = await db.createProduct({
-        ...input,
-        price: input.price.toFixed(2),
-      });
+      const id = await db.createProduct(input);
       return { id };
     }),
     update: adminProcedure
@@ -131,7 +133,7 @@ export const appRouter = router({
         if (!(await db.getAdminProductById(id))) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado" });
         }
-        await db.updateProduct(id, { ...fields, price: input.price.toFixed(2) });
+        await db.updateProduct(id, fields);
         return { success: true } as const;
       }),
     delete: adminProcedure

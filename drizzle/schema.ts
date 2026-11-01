@@ -36,7 +36,7 @@ export const products = mysqlTable(
     title: varchar("title", { length: 180 }).notNull(),
     description: text("description").notNull(),
     category: varchar("category", { length: 80 }).notNull().default("Geral"),
-    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    price: decimal("price", { precision: 65, scale: 2 }).notNull(),
     imageUrl: text("imageUrl").notNull(),
     affiliateUrl: text("affiliateUrl").notNull(),
     isActive: boolean("isActive").notNull().default(true),

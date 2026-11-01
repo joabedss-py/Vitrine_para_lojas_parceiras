@@ -1,0 +1,1 @@
+ALTER TABLE `products` MODIFY COLUMN `price` decimal(65,2) NOT NULL;

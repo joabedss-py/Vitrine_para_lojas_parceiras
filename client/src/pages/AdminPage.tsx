@@ -2,11 +2,11 @@ import Brand from "@/components/Brand";
 import { startLogin } from "@/const";
 import type { CatalogProduct } from "@/lib/trpc";
 import { trpc } from "@/lib/trpc";
+import { formatMoneyBRL, isValidPriceString, MAX_PRICE_INPUT_LENGTH, normalizePriceString } from "@shared/price";
 import { ArrowLeft, ExternalLink, Image as ImageIcon, LoaderCircle, LogOut, Pencil, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "wouter";
 
-const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const allowedImageTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxImageBytes = 5 * 1024 * 1024;
 
@@ -174,11 +174,12 @@ export default function AdminPage() {
       setFormError("Adicione uma imagem do produto antes de salvar.");
       return;
     }
-    const price = Number(form.price.replace(",", "."));
-    if (!Number.isFinite(price) || price <= 0) {
-      setFormError("Informe um preço válido, maior que zero.");
+    const rawPrice = form.price.trim();
+    if (!isValidPriceString(rawPrice)) {
+      setFormError("Informe um preço positivo com até 63 dígitos e duas casas decimais.");
       return;
     }
+    const price = normalizePriceString(rawPrice);
     try {
       let imageUrl = form.imageUrl;
       if (imageFile) {
@@ -290,7 +291,7 @@ export default function AdminPage() {
               <div className="form-field"><label htmlFor="product-title">Título do produto</label><input id="product-title" required maxLength={180} value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Fone sem fio Bluetooth" /></div>
               <div className="form-field"><label htmlFor="product-description">Descrição e detalhes</label><textarea id="product-description" required maxLength={6000} value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} placeholder="Conte o que vale a pena saber sobre este produto." /></div>
               <div className="form-field"><label htmlFor="product-category">Categoria</label><input id="product-category" required maxLength={80} value={form.category} onChange={event => setForm({ ...form, category: event.target.value })} placeholder="Ex.: Casa, tecnologia, beleza" /></div>
-              <div className="form-field"><label htmlFor="product-price">Preço (R$)</label><input id="product-price" type="number" min="0.01" max="99999999.99" step="0.01" required value={form.price} onChange={event => setForm({ ...form, price: event.target.value })} placeholder="199,90" /></div>
+              <div className="form-field"><label htmlFor="product-price">Preço (R$)</label><input id="product-price" type="text" inputMode="decimal" maxLength={MAX_PRICE_INPUT_LENGTH} pattern="[0-9]{1,63}([.,][0-9]{1,2})?" required value={form.price} onChange={event => setForm({ ...form, price: event.target.value })} placeholder="199,90" /></div>
               <div className="form-field"><label htmlFor="affiliate-link">Link de afiliado do Mercado Livre</label><input id="affiliate-link" type="url" required maxLength={2048} value={form.affiliateUrl} onChange={event => setForm({ ...form, affiliateUrl: event.target.value })} placeholder="https://www.mercadolivre.com.br/..." /><span className="form-hint">Aceitamos links HTTPS do Mercado Livre e links curtos meli.la.</span></div>
               <div className="form-field"><label htmlFor="product-image">Imagem do produto</label><input id="product-image" type="file" accept="image/jpeg,image/png,image/webp" onChange={event => chooseImage(event.target.files?.[0])} /><span className="form-hint">JPG, PNG ou WebP, até 5 MB; a imagem será otimizada antes do envio.</span>{imagePreview && <div className="admin-thumb"><img src={imagePreview} alt="Prévia do produto" decoding="async" /></div>}</div>
               <label className="form-checkbox"><input type="checkbox" checked={form.isActive} onChange={event => setForm({ ...form, isActive: event.target.checked })} /> Exibir este produto na vitrine pública</label>
@@ -318,7 +319,7 @@ function AdminProductRow({ product, onEdit, onDelete }: { product: CatalogProduc
       <div className="admin-thumb"><img src={product.imageUrl} alt="" loading="lazy" decoding="async" /></div>
       <div>
         <div className="admin-row-title" title={product.title}>{product.title}</div>
-        <div className="admin-row-meta">{product.category} · {money.format(Number(product.price))}</div>
+        <div className="admin-row-meta">{product.category} · {formatMoneyBRL(product.price)}</div>
         <span className={`admin-row-status${product.isActive ? "" : " is-hidden"}`}>{product.isActive ? "Visível na vitrine" : "Oculto"}</span>
       </div>
       <div className="admin-row-actions">

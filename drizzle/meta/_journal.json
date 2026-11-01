@@ -15,6 +15,13 @@
       "when": 1793490737561,
       "tag": "0001_goofy_silk_fever",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1793538613829,
+      "tag": "0002_rich_vance_astro",
+      "breakpoints": true
     }
   ]
 }

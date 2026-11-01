@@ -11,3 +11,7 @@
 - [x] **Reduzir travamentos e lentidão** — A vitrine deve responder e rolar com mais fluidez, reduzindo trabalho de carregamento de imagens e de listagens, sem alterar o cadastro dos produtos, seus links de afiliado ou o fluxo de compra.
 
 - [x] **Atualizar o e-mail administrador e publicar nova versão** — Trocar o e-mail autorizado do administrador por meio do formulário protegido de produção, manter esse valor somente em segredo do ambiente e publicar uma nova versão do site. Somente a identidade autorizada deve continuar com acesso à administração.
+
+- [x] **Preço sem teto comercial** — Permitir cadastrar, editar e exibir preços acima do limite fixo atual, removendo o teto comercial do campo e preservando o valor e os centavos no banco e na vitrine. A implementação deve usar a maior precisão decimal suportada pelo armazenamento sem alterar preços existentes.
+
+- [x] **Travessão menor no título do site** — Reduzir a presença visual do travessão longo no título “Vitrine — seleção de produtos”, mantendo o nome e o restante do título.

@@ -1,10 +1,9 @@
 import Brand from "@/components/Brand";
 import { trpc } from "@/lib/trpc";
+import { formatMoneyBRL } from "@shared/price";
 import { ArrowLeft, BadgeInfo, ExternalLink, Image as ImageIcon } from "lucide-react";
 import { Link } from "wouter";
 import NotFound from "./NotFound";
-
-const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 export default function ProductDetailPage({ id }: { id: number }) {
   const productQuery = trpc.products.byId.useQuery({ id }, { enabled: Number.isInteger(id) && id > 0 });
@@ -37,7 +36,7 @@ export default function ProductDetailPage({ id }: { id: number }) {
           <span className="detail-category">{product.category}</span>
           <h1 id="product-title">{product.title}</h1>
           <p className="detail-description">{product.description}</p>
-          <p className="detail-price">{money.format(Number(product.price))}</p>
+          <p className="detail-price">{formatMoneyBRL(product.price)}</p>
           <a className="buy-button detail-buy" href={product.affiliateUrl} target="_blank" rel="nofollow sponsored noopener noreferrer">
             Compre aqui <ExternalLink aria-hidden="true" />
           </a>
