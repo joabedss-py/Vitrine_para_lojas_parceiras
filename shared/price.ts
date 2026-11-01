@@ -1,20 +1,75 @@
-const PRICE_PATTERN = /^\d{1,63}(?:[.,]\d{1,2})?$/;
-export const MAX_PRICE_INPUT_LENGTH = 66;
+const MAX_INTEGER_DIGITS = 63;
+export const MAX_PRICE_INPUT_LENGTH = 86;
+
+type ParsedPrice = { integer: string; cents: string };
+
+function normalizeIntegerPart(value: string, groupSeparator?: string): string | null {
+  if (/^\d+$/.test(value)) return value;
+  if (!groupSeparator) return null;
+
+  const groups = value.split(groupSeparator);
+  if (groups.length < 2 || !/^\d{1,3}$/.test(groups[0]) || groups.slice(1).some(group => !/^\d{3}$/.test(group))) {
+    return null;
+  }
+  return groups.join("");
+}
+
+function parsePrice(value: string): ParsedPrice | null {
+  const input = value.trim();
+  if (!input || !/^[\d.,]+$/.test(input)) return null;
+
+  const hasDot = input.includes(".");
+  const hasComma = input.includes(",");
+  let integerPart: string | null = null;
+  let fractionPart = "";
+
+  if (hasDot && hasComma) {
+    const decimalSeparator = input.lastIndexOf(".") > input.lastIndexOf(",") ? "." : ",";
+    const decimalIndex = input.lastIndexOf(decimalSeparator);
+    if (input.indexOf(decimalSeparator) !== decimalIndex) return null;
+
+    fractionPart = input.slice(decimalIndex + 1);
+    if (!/^\d{1,2}$/.test(fractionPart)) return null;
+
+    const groupingSeparator = decimalSeparator === "." ? "," : ".";
+    integerPart = normalizeIntegerPart(input.slice(0, decimalIndex), groupingSeparator);
+  } else if (hasDot || hasComma) {
+    const separator = hasDot ? "." : ",";
+    const parts = input.split(separator);
+
+    if (parts.length === 2 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1]) && parts[1].length <= 2) {
+      integerPart = parts[0];
+      fractionPart = parts[1];
+    } else {
+      integerPart = normalizeIntegerPart(input, separator);
+    }
+  } else {
+    integerPart = input;
+  }
+
+  if (!integerPart || !/^\d+$/.test(integerPart)) return null;
+  integerPart = integerPart.replace(/^0+(?=\d)/, "");
+  if (integerPart.length > MAX_INTEGER_DIGITS) return null;
+
+  const cents = fractionPart.padEnd(2, "0");
+  if (BigInt(integerPart) === 0n && BigInt(cents || "00") === 0n) return null;
+  return { integer: integerPart, cents };
+}
 
 export function isValidPriceString(value: string) {
-  const normalized = value.trim();
-  return PRICE_PATTERN.test(normalized) && /[1-9]/.test(normalized.replace(/[.,]/g, ""));
+  return parsePrice(value) !== null;
 }
 
 export function normalizePriceString(value: string) {
-  const [integerPart, fractionPart = ""] = value.trim().replace(",", ".").split(".");
-  return `${integerPart}.${fractionPart.padEnd(2, "0")}`;
+  const parsed = parsePrice(value);
+  if (!parsed) throw new RangeError("Valor monetário inválido");
+  return `${parsed.integer}.${parsed.cents}`;
 }
 
 function toMinorUnits(value: string) {
-  if (!isValidPriceString(value)) throw new RangeError("Valor monetário inválido");
-  const [integerPart, cents = "00"] = normalizePriceString(value).split(".");
-  return BigInt(integerPart) * 100n + BigInt(cents);
+  const parsed = parsePrice(value);
+  if (!parsed) throw new RangeError("Valor monetário inválido");
+  return BigInt(parsed.integer) * 100n + BigInt(parsed.cents);
 }
 
 export function comparePriceStrings(left: string, right: string): -1 | 0 | 1 {

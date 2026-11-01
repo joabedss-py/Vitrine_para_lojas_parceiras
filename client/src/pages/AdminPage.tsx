@@ -9,7 +9,7 @@ import { Link } from "wouter";
 
 const allowedImageTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxImageBytes = 5 * 1024 * 1024;
-const pricePattern = "[0-9]{1,63}([.,][0-9]{1,2})?";
+const pricePattern = "[0-9.,]+";
 
 type ProductForm = {
   id?: number;
@@ -359,7 +359,7 @@ export default function AdminPage() {
               <div className="form-field"><label htmlFor="product-category">Categoria</label><input id="product-category" required maxLength={80} value={form.category} onChange={event => setForm({ ...form, category: event.target.value })} placeholder="Ex.: Casa, tecnologia, beleza" /></div>
               <div className="form-field"><label htmlFor="product-store">Loja/vendedor (opcional)</label><input id="product-store" maxLength={120} value={form.storeName} onChange={event => setForm({ ...form, storeName: event.target.value })} placeholder="Ex.: TNT Info, Amazon, outra loja" /></div>
               <section className="pricing-form-section" aria-labelledby="pricing-form-title">
-                <div className="pricing-form-title"><h3 id="pricing-form-title">Preços e condições</h3><p>Os campos opcionais só aparecem na vitrine quando preenchidos. Digite valores sem “R$” e sem separador de milhar.</p></div>
+                <div className="pricing-form-title"><h3 id="pricing-form-title">Preços e condições</h3><p>Apenas o preço à vista é obrigatório; Pix, cartão, preço original e observações são opcionais. Aceita formatos como 9.699,00 ou 9,699.00, com vírgula ou ponto e separador de milhar.</p></div>
                 <div className="pricing-form-grid">
                   <div className="form-field"><label htmlFor="product-price">Preço à vista (R$)</label><input id="product-price" type="text" inputMode="decimal" maxLength={MAX_PRICE_INPUT_LENGTH} pattern={pricePattern} required value={form.price} onChange={event => setForm({ ...form, price: event.target.value })} placeholder="9.699,00" /></div>
                   <div className="form-field"><label htmlFor="product-list-price">Preço original (opcional)</label><input id="product-list-price" type="text" inputMode="decimal" maxLength={MAX_PRICE_INPUT_LENGTH} pattern={pricePattern} value={form.listPrice} onChange={event => setForm({ ...form, listPrice: event.target.value })} placeholder="11.639,00" /><span className="form-hint">Deve ser maior que o preço à vista; o desconto será calculado.</span></div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comparePriceStrings, formatMoneyBRL, getDiscountPercentage, isValidPriceString, multiplyPriceStringByCount, normalizePriceString } from "../shared/price";
+import { comparePriceStrings, formatMoneyBRL, getDiscountPercentage, isValidPriceString, MAX_PRICE_INPUT_LENGTH, multiplyPriceStringByCount, normalizePriceString } from "../shared/price";
 
 describe("price helpers", () => {
   it("accepts values beyond the former R$ 99.999.999,99 ceiling", () => {
@@ -7,16 +7,37 @@ describe("price helpers", () => {
     expect(normalizePriceString("100000000,5")).toBe("100000000.50");
   });
 
-  it("supports the maximum decimal precision without Number conversion", () => {
-    const maximumWholeDigits = "9".repeat(63);
-    expect(isValidPriceString(`${maximumWholeDigits},99`)).toBe(true);
-    expect(isValidPriceString(`${maximumWholeDigits}9,99`)).toBe(false);
-    expect(normalizePriceString(`${maximumWholeDigits},99`)).toBe(`${maximumWholeDigits}.99`);
+  it("supports Brazilian and international decimal and thousands separators", () => {
+    const cases = [
+      ["9.699,00", "9699.00"],
+      ["9,699.00", "9699.00"],
+      ["9699,00", "9699.00"],
+      ["9699.00", "9699.00"],
+      ["9.699", "9699.00"],
+      ["1.234.567,89", "1234567.89"],
+      ["1,234,567.89", "1234567.89"],
+    ] as const;
+
+    for (const [input, expected] of cases) {
+      expect(isValidPriceString(input), input).toBe(true);
+      expect(normalizePriceString(input), input).toBe(expected);
+    }
   });
 
-  it("rejects zero and more than two fractional digits", () => {
+  it("supports the maximum decimal precision with grouping without Number conversion", () => {
+    const maximumWholeDigits = "9".repeat(63);
+    const groupedMaximum = maximumWholeDigits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    expect(MAX_PRICE_INPUT_LENGTH).toBeGreaterThanOrEqual(groupedMaximum.length + 3);
+    expect(isValidPriceString(`${groupedMaximum},99`)).toBe(true);
+    expect(isValidPriceString(`${maximumWholeDigits}9,99`)).toBe(false);
+    expect(normalizePriceString(`${groupedMaximum},99`)).toBe(`${maximumWholeDigits}.99`);
+  });
+
+  it("rejects zero, malformed grouping, currency symbols and more than two cents", () => {
     expect(isValidPriceString("0,00")).toBe(false);
-    expect(isValidPriceString("10,999")).toBe(false);
+    expect(isValidPriceString("12.34,56")).toBe(false);
+    expect(isValidPriceString("R$ 9.699,00")).toBe(false);
+    expect(isValidPriceString("10,9999")).toBe(false);
   });
 
   it("formats large BRL values and preserves cents exactly", () => {
@@ -24,7 +45,7 @@ describe("price helpers", () => {
   });
 
   it("matches a storefront discount badge and calculates the total card price", () => {
-    expect(getDiscountPercentage("11639,00", "9699,00")).toBe(16);
+    expect(getDiscountPercentage("11.639,00", "9.699,00")).toBe(16);
     expect(multiplyPriceStringByCount("969,90", 10)).toBe("9699.00");
   });
 

@@ -11,7 +11,7 @@ import { adminProcedure, isAdminAuthorized, publicProcedure, router } from "./_c
 import * as db from "./db";
 
 const priceInput = z.string().trim()
-  .refine(isValidPriceString, "Informe um preço positivo com até 63 dígitos e duas casas decimais.")
+  .refine(isValidPriceString, "Informe um preço positivo com até 63 dígitos, até duas casas decimais e separadores de milhar válidos.")
   .transform(normalizePriceString);
 const optionalPriceInput = z.union([z.literal(""), z.null(), priceInput])
   .transform(value => value === "" ? null : value);
