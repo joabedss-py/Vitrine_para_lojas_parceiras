@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseRetryAfterMs } from "../shared/product-monitor";
+import {
+  isValidObservedPrice,
+  parseRetryAfterMs,
+  shouldRecordAvailabilityTransition,
+  shouldRecordPriceObservation,
+} from "../shared/product-monitor";
 import {
   canAutomaticallyRetryProductMonitor,
   getPublicProductAvailability,
@@ -37,6 +42,26 @@ describe("product monitor retry policy", () => {
   it("pauses automatic retries after the configured maximum number of failures", () => {
     expect(canAutomaticallyRetryProductMonitor(PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS - 1)).toBe(true);
     expect(canAutomaticallyRetryProductMonitor(PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS)).toBe(false);
+  });
+});
+
+describe("history recording policy", () => {
+  it("accepts only positive observed prices and records first or changed observations", () => {
+    expect(isValidObservedPrice("19.90")).toBe(true);
+    expect(isValidObservedPrice("0")).toBe(false);
+    expect(isValidObservedPrice("-1")).toBe(false);
+    expect(isValidObservedPrice(null)).toBe(false);
+    expect(shouldRecordPriceObservation(null, "19.90")).toBe(true);
+    expect(shouldRecordPriceObservation("19.90", "19.90")).toBe(false);
+    expect(shouldRecordPriceObservation("19.90", "20.90")).toBe(true);
+    expect(shouldRecordPriceObservation("19.90", "-1")).toBe(false);
+  });
+
+  it("records only confirmed availability transitions and deduplicates consecutive states", () => {
+    expect(shouldRecordAvailabilityTransition(null, "available")).toBe(true);
+    expect(shouldRecordAvailabilityTransition("available", "available")).toBe(false);
+    expect(shouldRecordAvailabilityTransition("available", "unavailable")).toBe(true);
+    expect(shouldRecordAvailabilityTransition("unavailable", "out_of_stock")).toBe(true);
   });
 });
 

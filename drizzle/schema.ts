@@ -129,13 +129,32 @@ export const productPriceHistory = mysqlTable(
     id: int("id").autoincrement().primaryKey(),
     productId: int("productId").notNull(),
     provider: varchar("provider", { length: 40 }).notNull(),
-    previousPrice: decimal("previousPrice", { precision: 65, scale: 2 }).notNull(),
+    externalProductId: varchar("externalProductId", { length: 40 }),
+    previousPrice: decimal("previousPrice", { precision: 65, scale: 2 }),
     currentPrice: decimal("currentPrice", { precision: 65, scale: 2 }).notNull(),
     checkedAt: timestamp("checkedAt").defaultNow().notNull(),
   },
   table => ({
     productCheckedIdx: index("product_price_history_product_checked_idx").on(table.productId, table.checkedAt),
+    providerExternalIdx: index("product_price_history_provider_external_idx").on(table.provider, table.externalProductId),
   }),
 );
 
 export type ProductPriceHistory = typeof productPriceHistory.$inferSelect;
+
+export const productAvailabilityHistory = mysqlTable(
+  "product_availability_history",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    productId: int("productId").notNull(),
+    provider: varchar("provider", { length: 40 }).notNull(),
+    externalProductId: varchar("externalProductId", { length: 40 }),
+    availabilityStatus: mysqlEnum("availabilityStatus", ["available", "out_of_stock", "unavailable"]).notNull(),
+    checkedAt: timestamp("checkedAt").defaultNow().notNull(),
+  },
+  table => ({
+    productCheckedIdx: index("product_availability_history_product_checked_idx").on(table.productId, table.checkedAt),
+  }),
+);
+
+export type ProductAvailabilityHistory = typeof productAvailabilityHistory.$inferSelect;

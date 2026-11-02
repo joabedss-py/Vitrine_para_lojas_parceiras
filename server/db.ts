@@ -1,9 +1,13 @@
 import { and, asc, desc, eq, isNull, like, lt, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { InsertMarketplaceConnection, InsertProduct, InsertUser } from "../drizzle/schema";
-import { marketplaceConnections, productPriceHistory, products, scheduledJobs, users, whatsappProductAnnouncements } from "../drizzle/schema";
+import { marketplaceConnections, productAvailabilityHistory, productPriceHistory, products, scheduledJobs, users, whatsappProductAnnouncements } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS } from "../shared/product-monitor";
+import {
+  PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS,
+  shouldRecordAvailabilityTransition,
+  shouldRecordPriceObservation,
+} from "../shared/product-monitor";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -408,22 +412,40 @@ export async function listDueMonitorProducts(now: Date, limit = 200) {
 
 export async function updateProductMonitorSuccess(
   id: number,
-  snapshot: { provider: string; price: string; listPrice?: string | null; availability: "available" | "out_of_stock" | "unavailable" },
+  snapshot: { provider: string; itemId: string; price: string; listPrice?: string | null; availability: "available" | "out_of_stock" | "unavailable" },
   checkedAt: Date,
   nextCheckAt: Date,
 ) {
   const db = await requireDb();
   await db.transaction(async tx => {
-    const existing = await tx.select({ price: products.price }).from(products)
+    const existing = await tx.select({
+      price: products.price,
+      availabilityStatus: products.availabilityStatus,
+    }).from(products)
       .where(and(eq(products.id, id), or(isNull(products.lastCheckedAt), lte(products.lastCheckedAt, checkedAt))))
       .for("update").limit(1);
     if (!existing[0]) return;
-    if (String(existing[0].price) !== snapshot.price) {
+
+    const previousPrice = String(existing[0].price);
+    if (shouldRecordPriceObservation(previousPrice, snapshot.price)) {
       await tx.insert(productPriceHistory).values({
         productId: id,
         provider: snapshot.provider,
-        previousPrice: String(existing[0].price),
+        externalProductId: snapshot.itemId,
+        previousPrice,
         currentPrice: snapshot.price,
+        checkedAt,
+      });
+    }
+    if (
+      existing[0].availabilityStatus !== "unknown" &&
+      shouldRecordAvailabilityTransition(existing[0].availabilityStatus, snapshot.availability)
+    ) {
+      await tx.insert(productAvailabilityHistory).values({
+        productId: id,
+        provider: snapshot.provider,
+        externalProductId: snapshot.itemId,
+        availabilityStatus: snapshot.availability,
         checkedAt,
       });
     }

@@ -7,6 +7,23 @@ export const PRODUCT_MONITOR_PUBLIC_STATUS_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export type PublicProductAvailability = "available" | "out_of_stock" | "unavailable" | "unknown";
 
+export function isValidObservedPrice(value: string | null | undefined): boolean {
+  if (value == null || value.trim() === "") return false;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0;
+}
+
+export function shouldRecordPriceObservation(previousPrice: string | null | undefined, currentPrice: string): boolean {
+  return isValidObservedPrice(currentPrice) && (previousPrice == null || previousPrice !== currentPrice);
+}
+
+export function shouldRecordAvailabilityTransition(
+  previousStatus: "available" | "out_of_stock" | "unavailable" | null | undefined,
+  currentStatus: "available" | "out_of_stock" | "unavailable",
+): boolean {
+  return previousStatus !== currentStatus;
+}
+
 export function parseRetryAfterMs(value: string | null, nowMs = Date.now()) {
   if (!value) return undefined;
   const seconds = Number(value.trim());
