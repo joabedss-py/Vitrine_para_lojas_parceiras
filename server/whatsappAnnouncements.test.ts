@@ -1,54 +1,47 @@
 import { describe, expect, it } from "vitest";
-import sharp from "sharp";
-import type { Product } from "../drizzle/schema";
-import { buildGroupImageMessage, buildProductAnnouncementCaption, normalizeProductImageToJpeg } from "./whatsappAnnouncements";
+import { buildProductAnnouncementText } from "../shared/whatsapp-announcement";
 
 const product = {
-  id: 30001,
   title: "Fone sem fio",
-  description: "Descrição não deve ser enviada no anúncio.",
-  category: "Tecnologia",
+  description: "Cancelamento de ruído\nBateria de longa duração.",
   price: "299.90",
   listPrice: "399.90",
   pixPrice: "279.90",
   cardInstallmentPrice: "29.99",
   installments: 10,
   cardInterestFree: true,
-  storeName: "Loja parceira",
   shippingInfo: "Frete grátis",
   promotionInfo: "Oferta por tempo limitado",
-  imageUrl: "/manus-storage/products/fone.webp",
-  affiliateUrl: "https://loja-parceira.example/afiliado?tag=secreto",
-  isActive: true,
-} as unknown as Product;
+  affiliateUrl: "https://loja.example/afiliado?tag=privado",
+};
 
-describe("WhatsApp product announcements", () => {
-  it("includes product conditions and the short Vitrine URL without exposing the affiliate destination", () => {
-    const caption = buildProductAnnouncementCaption(product, "https://vitrineml-ecps2ye7.manus.space/produto/30001/");
-    expect(caption).toContain("Fone sem fio");
-    expect(caption).toContain("À vista: R$ 299,90");
-    expect(caption).toContain("No Pix: R$ 279,90");
-    expect(caption).toContain("10x de R$ 29,99 sem juros");
-    expect(caption).toContain("/produto/30001/");
-    expect(caption).not.toContain(product.affiliateUrl);
-    expect(caption).not.toContain("Descrição não deve ser enviada");
+const productUrl = "https://vitrineml-ecps2ye7.manus.space/produto/30001/";
+
+describe("manual channel announcement text", () => {
+  it("includes the product name, complete description, prices, conditions and public Vitrine link", () => {
+    const text = buildProductAnnouncementText(product, productUrl);
+    expect(text).toContain("Fone sem fio");
+    expect(text).toContain("Cancelamento de ruído\nBateria de longa duração.");
+    expect(text).toContain("À vista: R$\u00a0299,90");
+    expect(text).toContain("No Pix: R$\u00a0279,90");
+    expect(text).toContain("10x de R$\u00a029,99 sem juros (total R$\u00a0299,90)");
+    expect(text).toContain("Preço original: R$\u00a0399,90");
+    expect(text).toContain("Frete grátis");
+    expect(text).toContain("Oferta por tempo limitado");
+    expect(text).toContain(productUrl);
+    expect(text).not.toContain(product.affiliateUrl);
   });
 
-  it("targets the group and sends the uploaded media ID with the caption", () => {
-    expect(buildGroupImageMessage("group_123", "media_456", "Legenda")).toEqual({
-      messaging_product: "whatsapp",
-      recipient_type: "group",
-      to: "group_123",
-      type: "image",
-      image: { id: "media_456", caption: "Legenda" },
-    });
-  });
-
-  it("normalizes a supported input to a JPEG before the Meta media upload", async () => {
-    const png = await sharp({
-      create: { width: 8, height: 8, channels: 3, background: { r: 120, g: 160, b: 200 } },
-    }).png().toBuffer();
-    const jpeg = await normalizeProductImageToJpeg(png);
-    expect((await sharp(jpeg).metadata()).format).toBe("jpeg");
+  it("omits payment conditions that were not registered", () => {
+    const text = buildProductAnnouncementText({
+      title: "Produto básico",
+      description: "Descrição simples.",
+      price: "49.90",
+    }, productUrl);
+    expect(text).toContain("À vista: R$\u00a049,90");
+    expect(text).toContain("Descrição simples.");
+    expect(text).not.toContain("No Pix:");
+    expect(text).not.toContain("Preço original:");
+    expect(text).not.toContain("x de");
   });
 });

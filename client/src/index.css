@@ -333,6 +333,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .monitor-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .monitor-controls .small-button:disabled { cursor: not-allowed; opacity: .5; }
 .monitor-message { margin: 10px 0 0; }
+.channel-announcement-list { display: grid; gap: 12px; margin-top: 12px; }
+.channel-announcement-card { display: grid; gap: 10px; padding: 12px; border: 1px solid #eeece8; border-radius: 9px; }
+.channel-announcement-header { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 11px; }
+.channel-announcement-image-link { display: block; width: 58px; height: 58px; overflow: hidden; border-radius: 7px; background: #f1f0ec; }
+.channel-announcement-image-link img { width: 100%; height: 100%; padding: 4px; object-fit: contain; }
+.channel-announcement-product h3 { margin: 0; color: var(--primary); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.channel-announcement-product p { margin: 4px 0; color: #879092; font-size: 10px; }
+.channel-announcement-status { color: #607468; font-size: 10px; font-weight: 700; }
+.channel-announcement-label { color: #647078; font-size: 11px; font-weight: 700; }
+.channel-announcement-preview { width: 100%; min-height: 190px; resize: vertical; padding: 10px; border: 1px solid #e2e0db; border-radius: 7px; background: #faf9f6; color: #394448; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.channel-announcement-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.channel-announcement-actions a { text-decoration: none; }
+.channel-announcement-actions .small-button:disabled { cursor: wait; opacity: .55; }
 .monitor-form-section { margin: 2px 0; }
 .monitor-form-section .form-field select { width: 100%; min-height: 42px; padding: 10px 11px; border: 1px solid #e2e0db; border-radius: 7px; background: #fff; color: var(--foreground); font-size: 12px; }
 .admin-row-monitor { display: grid; justify-items: start; gap: 5px; margin-top: 9px; color: #707c80; font-size: 10px; }
@@ -348,4 +361,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .monitor-environment { flex: 0 0 auto; }
   .monitor-controls { align-items: stretch; flex-direction: column; }
   .monitor-controls .small-button { justify-content: center; min-height: 38px; }
+  .channel-announcement-actions { align-items: stretch; flex-direction: column; }
+  .channel-announcement-actions .small-button { justify-content: center; min-height: 38px; }
 }

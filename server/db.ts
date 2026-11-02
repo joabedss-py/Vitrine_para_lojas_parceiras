@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, isNull, like, lt, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, like, lt, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { InsertMarketplaceConnection, InsertProduct, InsertUser } from "../drizzle/schema";
 import { marketplaceConnections, productPriceHistory, products, scheduledJobs, users, whatsappProductAnnouncements } from "../drizzle/schema";
@@ -174,26 +174,121 @@ export async function createProduct(product: InsertProduct): Promise<number> {
   return id;
 }
 
-export async function createProductWithWhatsAppAnnouncement(product: InsertProduct, queueAnnouncement: boolean) {
+export async function createProductWithChannelAnnouncement(product: InsertProduct, buildAnnouncementText: (productId: number) => string) {
   const db = await requireDb();
   return db.transaction(async tx => {
     const inserted = await tx.insert(products).values(product).$returningId();
     const id = inserted[0]?.id;
     if (!id) throw new Error("Product insert did not return an id");
-    let announcementId: number | null = null;
-    if (queueAnnouncement) {
-      const [announcement] = await tx.insert(whatsappProductAnnouncements)
-        .values({ productId: id, nextAttemptAt: new Date() }).$returningId();
-      announcementId = announcement?.id ?? null;
-      if (!announcementId) throw new Error("WhatsApp announcement insert did not return an id");
+    if (product.isActive) {
+      const now = new Date();
+      await tx.insert(whatsappProductAnnouncements).values({
+        productId: id,
+        status: "prepared",
+        announcementText: buildAnnouncementText(id),
+        preparedAt: now,
+        nextAttemptAt: now,
+      });
     }
-    return { id, notificationQueued: queueAnnouncement, announcementId };
+    return { id, announcementPrepared: product.isActive === true };
   });
 }
 
-export async function updateProduct(id: number, product: Omit<InsertProduct, "id" | "createdAt">) {
+export async function updateProductWithChannelAnnouncement(
+  id: number,
+  product: Omit<InsertProduct, "id" | "createdAt">,
+  buildAnnouncementText: (productId: number) => string,
+) {
   const db = await requireDb();
-  await db.update(products).set(product).where(eq(products.id, id));
+  await db.transaction(async tx => {
+    const [existingProduct] = await tx.select({ id: products.id }).from(products).where(eq(products.id, id)).for("update").limit(1);
+    if (!existingProduct) throw new Error("Product not found");
+    await tx.update(products).set(product).where(eq(products.id, id));
+    const [announcement] = await tx.select().from(whatsappProductAnnouncements)
+      .where(eq(whatsappProductAnnouncements.productId, id)).for("update").limit(1);
+    if (announcement?.status === "published_manually") return;
+
+    const now = new Date();
+    if (!product.isActive) {
+      if (announcement && announcement.status !== "cancelled") {
+        await tx.update(whatsappProductAnnouncements).set({ status: "cancelled", lockedUntil: null })
+          .where(eq(whatsappProductAnnouncements.id, announcement.id));
+      }
+      return;
+    }
+
+    const preparedFields = {
+      status: "prepared" as const,
+      announcementText: buildAnnouncementText(id),
+      preparedAt: now,
+      publishedManuallyAt: null,
+      attemptCount: 0,
+      nextAttemptAt: now,
+      lockedUntil: null,
+      lastErrorCode: null,
+      providerMessageId: null,
+      sentAt: null,
+    };
+    if (announcement) {
+      await tx.update(whatsappProductAnnouncements).set(preparedFields)
+        .where(eq(whatsappProductAnnouncements.id, announcement.id));
+    } else {
+      await tx.insert(whatsappProductAnnouncements).values({ productId: id, ...preparedFields });
+    }
+  });
+}
+
+export async function listPreparedChannelAnnouncements() {
+  const db = await requireDb();
+  return db.select({
+    productId: products.id,
+    title: products.title,
+    description: products.description,
+    price: products.price,
+    listPrice: products.listPrice,
+    pixPrice: products.pixPrice,
+    cardInstallmentPrice: products.cardInstallmentPrice,
+    installments: products.installments,
+    cardInterestFree: products.cardInterestFree,
+    shippingInfo: products.shippingInfo,
+    promotionInfo: products.promotionInfo,
+    imageUrl: products.imageUrl,
+    status: whatsappProductAnnouncements.status,
+    announcementText: whatsappProductAnnouncements.announcementText,
+    preparedAt: whatsappProductAnnouncements.preparedAt,
+    publishedManuallyAt: whatsappProductAnnouncements.publishedManuallyAt,
+  })
+    .from(whatsappProductAnnouncements)
+    .innerJoin(products, eq(products.id, whatsappProductAnnouncements.productId))
+    .where(and(
+      eq(products.isActive, true),
+      or(
+        eq(whatsappProductAnnouncements.status, "prepared"),
+        eq(whatsappProductAnnouncements.status, "published_manually"),
+      ),
+    ))
+    .orderBy(desc(whatsappProductAnnouncements.preparedAt), desc(whatsappProductAnnouncements.id));
+}
+
+export async function markChannelAnnouncementPublished(productId: number) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const [product] = await tx.select({ isActive: products.isActive }).from(products)
+      .where(eq(products.id, productId)).for("update").limit(1);
+    if (!product) return "not_found" as const;
+    if (!product.isActive) return "inactive" as const;
+    const [announcement] = await tx.select().from(whatsappProductAnnouncements)
+      .where(eq(whatsappProductAnnouncements.productId, productId)).for("update").limit(1);
+    if (!announcement || announcement.status === "cancelled") return "not_prepared" as const;
+    if (announcement.status === "published_manually") return "already_published" as const;
+    if (announcement.status !== "prepared") return "not_prepared" as const;
+    await tx.update(whatsappProductAnnouncements).set({
+      status: "published_manually",
+      publishedManuallyAt: new Date(),
+      lockedUntil: null,
+    }).where(eq(whatsappProductAnnouncements.id, announcement.id));
+    return "published" as const;
+  });
 }
 
 export async function deleteProduct(id: number) {
@@ -203,97 +298,6 @@ export async function deleteProduct(id: number) {
     await tx.delete(productPriceHistory).where(eq(productPriceHistory.productId, id));
     await tx.delete(products).where(eq(products.id, id));
   });
-}
-
-export async function listDueWhatsAppAnnouncements(now: Date, limit = 20) {
-  const db = await requireDb();
-  const duePending = and(
-    eq(whatsappProductAnnouncements.status, "pending"),
-    lte(whatsappProductAnnouncements.nextAttemptAt, now),
-  );
-  const expiredLease = and(
-    eq(whatsappProductAnnouncements.status, "sending"),
-    or(isNull(whatsappProductAnnouncements.lockedUntil), lte(whatsappProductAnnouncements.lockedUntil, now)),
-  );
-  return db.select({ id: whatsappProductAnnouncements.id })
-    .from(whatsappProductAnnouncements)
-    .where(or(duePending, expiredLease))
-    .orderBy(asc(whatsappProductAnnouncements.nextAttemptAt), asc(whatsappProductAnnouncements.id))
-    .limit(limit);
-}
-
-export async function claimWhatsAppAnnouncement(id: number, now: Date, leaseMs: number, maxAttempts: number) {
-  const db = await requireDb();
-  return db.transaction(async tx => {
-    const [row] = await tx.select().from(whatsappProductAnnouncements)
-      .where(eq(whatsappProductAnnouncements.id, id)).for("update").limit(1);
-    if (!row || row.status === "sent" || row.status === "failed") return null;
-    if (row.status === "pending" && row.nextAttemptAt > now) return null;
-    if (row.status === "sending" && row.lockedUntil && row.lockedUntil > now) return null;
-    if (row.attemptCount >= maxAttempts) {
-      await tx.update(whatsappProductAnnouncements).set({
-        status: "failed",
-        lockedUntil: null,
-        lastErrorCode: row.status === "sending" ? "lease_expired_max_attempts" : "retry_limit_reached",
-      }).where(eq(whatsappProductAnnouncements.id, id));
-      return null;
-    }
-
-    const attemptCount = row.attemptCount + 1;
-    await tx.update(whatsappProductAnnouncements).set({
-      status: "sending",
-      attemptCount,
-      lockedUntil: new Date(now.getTime() + leaseMs),
-    }).where(eq(whatsappProductAnnouncements.id, id));
-    return { productId: row.productId, attemptCount };
-  });
-}
-
-export async function markWhatsAppAnnouncementSent(id: number, messageId: string, sentAt: Date) {
-  const db = await requireDb();
-  await db.update(whatsappProductAnnouncements).set({
-    status: "sent",
-    providerMessageId: messageId.slice(0, 128),
-    sentAt,
-    lockedUntil: null,
-    lastErrorCode: null,
-  }).where(eq(whatsappProductAnnouncements.id, id));
-}
-
-export async function markWhatsAppAnnouncementFailure(
-  id: number,
-  errorCode: string,
-  nextAttemptAt: Date,
-  permanentlyFailed: boolean,
-) {
-  const db = await requireDb();
-  await db.update(whatsappProductAnnouncements).set({
-    status: permanentlyFailed ? "failed" : "pending",
-    nextAttemptAt,
-    lockedUntil: null,
-    lastErrorCode: errorCode.slice(0, 64),
-  }).where(eq(whatsappProductAnnouncements.id, id));
-}
-
-export async function getWhatsAppAnnouncementCounts() {
-  const db = await requireDb();
-  const rows = await db.select({ status: whatsappProductAnnouncements.status, total: count() })
-    .from(whatsappProductAnnouncements)
-    .groupBy(whatsappProductAnnouncements.status);
-  const counts = { pending: 0, sending: 0, sent: 0, failed: 0 };
-  for (const row of rows) counts[row.status] = Number(row.total);
-  return counts;
-}
-
-export async function requeueFailedWhatsAppAnnouncements(now: Date) {
-  const db = await requireDb();
-  await db.update(whatsappProductAnnouncements).set({
-    status: "pending",
-    attemptCount: 0,
-    nextAttemptAt: now,
-    lockedUntil: null,
-    lastErrorCode: null,
-  }).where(eq(whatsappProductAnnouncements.status, "failed"));
 }
 
 export async function getMarketplaceConnection(provider: string) {

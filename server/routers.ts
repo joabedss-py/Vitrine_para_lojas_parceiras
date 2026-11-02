@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { comparePriceStrings, isValidPriceString, normalizePriceString } from "../shared/price";
+import { buildProductAnnouncementText } from "../shared/whatsapp-announcement";
 import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -12,7 +13,6 @@ import { startMercadoLivreOAuth } from "./_core/marketplaceOAuth";
 import { configureProductMonitorSchedule, disableProductMonitorSchedule, disconnectMercadoLivre as disconnectMercadoLivreConnection, syncProductNow } from "./productMonitor";
 import { getMarketplaceProvider, listMarketplaceProviders } from "./marketplaces/registry";
 import { mercadoLivreCredentialsConfigured } from "./marketplaces/mercadoLivreOAuth";
-import { announceNewProduct, configureWhatsAppAnnouncementsSchedule, disableWhatsAppAnnouncementsSchedule, retryFailedWhatsAppAnnouncements, WHATSAPP_ANNOUNCEMENTS_JOB_NAME, whatsappCredentialsConfigured } from "./whatsappAnnouncements";
 import { adminProcedure, isAdminAuthorized, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
@@ -159,22 +159,26 @@ export const appRouter = router({
         isProduction: ENV.isProduction,
       };
     }),
-    whatsappStatus: adminProcedure.query(async () => {
-      const [schedule, counts] = await Promise.all([
-        db.getScheduledJob(WHATSAPP_ANNOUNCEMENTS_JOB_NAME),
-        db.getWhatsAppAnnouncementCounts(),
-      ]);
-      return {
-        configured: whatsappCredentialsConfigured(),
-        scheduleEnabled: Boolean(schedule?.enabled),
-        isProduction: ENV.isProduction,
-        pendingCount: counts.pending + counts.sending,
-        failedCount: counts.failed,
-      };
+    channelAnnouncements: adminProcedure.query(async () => {
+      const announcements = await db.listPreparedChannelAnnouncements();
+      return announcements.map(announcement => {
+        const productUrl = new URL(`/produto/${announcement.productId}/`, ENV.publicSiteOrigin).toString();
+        return {
+          ...announcement,
+          productUrl,
+          announcementText: announcement.announcementText ?? buildProductAnnouncementText(announcement, productUrl),
+        };
+      });
     }),
-    configureWhatsAppSchedule: adminProcedure.mutation(() => configureWhatsAppAnnouncementsSchedule()),
-    disableWhatsAppSchedule: adminProcedure.mutation(() => disableWhatsAppAnnouncementsSchedule()),
-    retryWhatsAppNotifications: adminProcedure.mutation(() => retryFailedWhatsAppAnnouncements()),
+    markChannelAnnouncementPublished: adminProcedure
+      .input(z.object({ productId: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const result = await db.markChannelAnnouncementPublished(input.productId);
+        if (result === "not_found") throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado." });
+        if (result === "inactive") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Ative o produto antes de registrar a publicação." });
+        if (result === "not_prepared") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Não há uma preparação pendente para este produto." });
+        return { success: true, alreadyPublished: result === "already_published" } as const;
+      }),
     connectMercadoLivre: adminProcedure.mutation(({ ctx }) => startMercadoLivreOAuth(ctx.res)),
     disconnectMercadoLivre: adminProcedure.mutation(() => disconnectMercadoLivreConnection()),
     configureMonitorSchedule: adminProcedure.mutation(() => configureProductMonitorSchedule()),
@@ -201,23 +205,11 @@ export const appRouter = router({
         }
       }),
     create: adminProcedure.input(productFields).mutation(async ({ input }) => {
-      const queueAnnouncement = input.isActive && ENV.isProduction;
-      const created = await db.createProductWithWhatsAppAnnouncement(input, queueAnnouncement);
-      let whatsappStatus: "sent" | "pending" | "failed" | "not_configured" | "inactive";
-      if (!input.isActive) {
-        whatsappStatus = "inactive";
-      } else if (!created.announcementId) {
-        whatsappStatus = ENV.isProduction ? "pending" : "not_configured";
-      } else {
-        try {
-          const status = await announceNewProduct(created.announcementId);
-          whatsappStatus = status === "skipped" ? "pending" : status;
-        } catch (error) {
-          logInternalError("Queue WhatsApp product announcement", error);
-          whatsappStatus = "pending";
-        }
-      }
-      return { id: created.id, whatsappStatus };
+      const created = await db.createProductWithChannelAnnouncement(input, productId => {
+        const productUrl = new URL(`/produto/${productId}/`, ENV.publicSiteOrigin).toString();
+        return buildProductAnnouncementText(input, productUrl);
+      });
+      return { id: created.id, announcementStatus: created.announcementPrepared ? "prepared" as const : "inactive" as const };
     }),
     update: adminProcedure
       .input(productFieldsBase.extend({ id: z.number().int().positive() }).superRefine(validateProductFields))
@@ -229,7 +221,7 @@ export const appRouter = router({
         }
         const sourceChanged = existing.sourceProvider !== fields.sourceProvider ||
           existing.sourceUrl !== fields.sourceUrl || existing.monitorEnabled !== fields.monitorEnabled;
-        await db.updateProduct(id, {
+        const updatedProduct = {
           ...fields,
           ...(sourceChanged ? {
             availabilityStatus: "unknown" as const,
@@ -238,6 +230,10 @@ export const appRouter = router({
             lastSyncError: null,
             syncFailureCount: 0,
           } : {}),
+        };
+        await db.updateProductWithChannelAnnouncement(id, updatedProduct, productId => {
+          const productUrl = new URL(`/produto/${productId}/`, ENV.publicSiteOrigin).toString();
+          return buildProductAnnouncementText(updatedProduct, productUrl);
         });
         return { success: true } as const;
       }),

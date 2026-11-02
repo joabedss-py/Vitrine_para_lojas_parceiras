@@ -103,7 +103,7 @@ export const whatsappProductAnnouncements = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     productId: int("productId").notNull(),
-    status: mysqlEnum("status", ["pending", "sending", "sent", "failed"]).notNull().default("pending"),
+    status: mysqlEnum("status", ["pending", "sending", "sent", "failed", "prepared", "published_manually", "cancelled"]).notNull().default("pending"),
     attemptCount: int("attemptCount").notNull().default(0),
     nextAttemptAt: timestamp("nextAttemptAt").notNull().defaultNow(),
     lockedUntil: timestamp("lockedUntil"),
@@ -111,6 +111,9 @@ export const whatsappProductAnnouncements = mysqlTable(
     providerMessageId: varchar("providerMessageId", { length: 128 }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     sentAt: timestamp("sentAt"),
+    announcementText: text("announcementText"),
+    preparedAt: timestamp("preparedAt"),
+    publishedManuallyAt: timestamp("publishedManuallyAt"),
   },
   table => ({
     productUnique: uniqueIndex("whatsapp_product_announcements_product_uq").on(table.productId),
