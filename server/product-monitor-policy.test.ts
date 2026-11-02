@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseRetryAfterMs } from "../shared/product-monitor";
 import {
   canAutomaticallyRetryProductMonitor,
   getPublicProductAvailability,
@@ -12,6 +13,14 @@ import {
 } from "../shared/product-monitor";
 
 describe("product monitor retry policy", () => {
+  it("parses Retry-After seconds and HTTP dates while rejecting invalid or past values", () => {
+    const now = Date.parse("2026-11-02T12:00:00.000Z");
+    expect(parseRetryAfterMs("30", now)).toBe(30_000);
+    expect(parseRetryAfterMs("Mon, 02 Nov 2026 12:01:00 GMT", now)).toBe(60_000);
+    expect(parseRetryAfterMs("not-a-date", now)).toBeUndefined();
+    expect(parseRetryAfterMs("Mon, 02 Nov 2026 11:59:00 GMT", now)).toBeUndefined();
+  });
+
   it("checks products every six hours while the worker wakes every fifteen minutes", () => {
     expect(PRODUCT_MONITOR_SUCCESS_INTERVAL_MS).toBe(6 * 60 * 60 * 1000);
     expect(PRODUCT_MONITOR_WORKER_INTERVAL_MINUTES).toBe(15);

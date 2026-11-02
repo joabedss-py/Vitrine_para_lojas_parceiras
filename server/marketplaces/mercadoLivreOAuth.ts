@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { parseRetryAfterMs } from "../../shared/product-monitor";
 import { marketplaceConnections } from "../../drizzle/schema";
 import * as db from "../db";
 import { ENV } from "../_core/env";
@@ -51,8 +52,7 @@ async function requestToken(body: URLSearchParams) {
   }
 
   if (response.status === 429) {
-    const retryAfter = Number(response.headers.get("retry-after"));
-    const retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 24 * 60 * 60 * 1000) : undefined;
+    const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
     throw new MarketplaceProviderError("rate_limited", "A conexão com o Mercado Livre foi limitada temporariamente.", retryAfterMs);
   }
   if (!response.ok) {

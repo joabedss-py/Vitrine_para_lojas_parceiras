@@ -1,5 +1,6 @@
 import { comparePriceStrings, isValidPriceString, normalizePriceString } from "../../shared/price";
 import { getMercadoLivreAccessToken } from "./mercadoLivreOAuth";
+import { parseRetryAfterMs } from "../../shared/product-monitor";
 import { MarketplaceProviderError, type MarketplaceProvider, type MarketplaceSnapshot } from "./types";
 
 const API_ORIGIN = "https://api.mercadolibre.com";
@@ -69,7 +70,7 @@ export async function fetchMercadoLivreSnapshot(
   }
 
   if (response.status === 404 || response.status === 410) {
-    throw new MarketplaceProviderError("not_found", "O anúncio não está disponível na loja.");
+    throw new MarketplaceProviderError("unavailable", "A loja não confirmou o encerramento do anúncio.");
   }
   if (response.status === 401) {
     throw new MarketplaceProviderError("unauthorized", "A autorização da loja precisa ser renovada.");
@@ -78,8 +79,7 @@ export async function fetchMercadoLivreSnapshot(
     throw new MarketplaceProviderError("forbidden", "A loja não autorizou a consulta deste anúncio.");
   }
   if (response.status === 429) {
-    const retryAfter = Number(response.headers.get("retry-after"));
-    const retryAfterMs = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 24 * 60 * 60 * 1000) : undefined;
+    const retryAfterMs = parseRetryAfterMs(response.headers.get("retry-after"));
     throw new MarketplaceProviderError("rate_limited", "A loja limitou temporariamente as consultas.", retryAfterMs);
   }
   if (!response.ok) {

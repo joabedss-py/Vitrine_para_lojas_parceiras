@@ -186,6 +186,13 @@ export const appRouter = router({
     syncProductNow: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ input }) => syncProductNow(input.id)),
+    reactivateProductMonitor: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const reactivated = await db.reactivateProductMonitor(input.id);
+        if (!reactivated) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "O produto não está pausado após atingir o limite de falhas." });
+        return { success: true } as const;
+      }),
     uploadImage: adminProcedure
       .input(z.object({
         contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),

@@ -344,6 +344,19 @@ export async function restartProviderMonitors(provider: string) {
     .where(and(eq(products.sourceProvider, provider), eq(products.monitorEnabled, true)));
 }
 
+export async function reactivateProductMonitor(id: number) {
+  const db = await requireDb();
+  const result = await db.update(products).set({
+    monitorEnabled: true,
+    availabilityStatus: "unknown",
+    lastCheckedAt: null,
+    nextCheckAt: new Date(),
+    lastSyncError: null,
+    syncFailureCount: 0,
+  }).where(and(eq(products.id, id), eq(products.monitorEnabled, true), eq(products.syncFailureCount, PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS)));
+  return result[0].affectedRows > 0;
+}
+
 export async function getScheduledJob(name: string) {
   const db = await requireDb();
   const result = await db.select().from(scheduledJobs).where(eq(scheduledJobs.name, name)).limit(1);

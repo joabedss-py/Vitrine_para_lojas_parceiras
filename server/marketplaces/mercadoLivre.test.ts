@@ -97,10 +97,10 @@ describe("fetchMercadoLivreSnapshot", () => {
     expect(snapshot.listPrice).toBe("9007199254740992.01");
   });
 
-  it("classifies 404 separately so a removed item is not confused with a failed request", async () => {
+  it("does not confirm removal from an uninformative 404 response", async () => {
     const fetcher = vi.fn(async () => new Response("{}", { status: 404 }));
     await expect(fetchMercadoLivreSnapshot("MLB1234567890", "test-token", fetcher))
-      .rejects.toMatchObject({ code: "not_found" });
+      .rejects.toMatchObject({ code: "unavailable" });
   });
 
   it("classifies 403 as a permission failure without requesting a token refresh", async () => {

@@ -7,6 +7,17 @@ export const PRODUCT_MONITOR_PUBLIC_STATUS_STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export type PublicProductAvailability = "available" | "out_of_stock" | "unavailable" | "unknown";
 
+export function parseRetryAfterMs(value: string | null, nowMs = Date.now()) {
+  if (!value) return undefined;
+  const seconds = Number(value.trim());
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(seconds * 1000, PRODUCT_MONITOR_MAX_RETRY_MS);
+  }
+  const dateMs = Date.parse(value);
+  if (!Number.isFinite(dateMs) || dateMs <= nowMs) return undefined;
+  return Math.min(dateMs - nowMs, PRODUCT_MONITOR_MAX_RETRY_MS);
+}
+
 export function getPublicProductAvailability(
   status: string | null | undefined,
   lastCheckedAt: Date | string | number | null | undefined,
