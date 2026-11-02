@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { analyzeCommercialHistory } from "../shared/commercial-intelligence";
 import {
   isValidObservedPrice,
   parseRetryAfterMs,
@@ -84,5 +85,27 @@ describe("public product availability freshness", () => {
   it("does not trust invalid or implausibly future timestamps", () => {
     expect(getPublicProductAvailability("available", "not-a-date", now)).toBe("unknown");
     expect(getPublicProductAvailability("available", new Date(now + 10 * 60 * 1000), now)).toBe("unknown");
+  });
+});
+
+describe("commercial intelligence", () => {
+  const commercialNow = new Date("2026-11-02T12:00:00.000Z");
+  const observation = (daysAgo: number, price: string) => ({ currentPrice: price, checkedAt: new Date(commercialNow.getTime() - daysAgo * 86_400_000) });
+
+  it("classifies a meaningful price drop only with sufficient history", () => {
+    const stats = analyzeCommercialHistory([
+      observation(30, "100"),
+      observation(15, "100"),
+      observation(0, "80"),
+    ], commercialNow);
+    expect(stats?.classification).toBe("good_offer");
+    expect(stats?.observationCount).toBe(3);
+    expect(stats?.periods[30]?.variationPercent).toBeLessThan(0);
+  });
+
+  it("does not classify sparse history as an offer", () => {
+    const stats = analyzeCommercialHistory([observation(1, "80"), observation(0, "80")], commercialNow);
+    expect(stats?.classification).toBe("insufficient_history");
+    expect(stats?.justification).toContain("Histórico insuficiente");
   });
 });
