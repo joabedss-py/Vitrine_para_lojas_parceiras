@@ -1,9 +1,14 @@
 import { and, asc, desc, eq, isNull, like, lt, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { InsertMarketplaceConnection, InsertProduct, InsertUser } from "../drizzle/schema";
-import { marketplaceConnections, productPriceHistory, products, scheduledJobs, users, whatsappProductAnnouncements } from "../drizzle/schema";
+import { commercialAlerts, marketplaceConnections, productAvailabilityHistory, productPriceHistory, products, scheduledJobs, users, whatsappProductAnnouncements } from "../drizzle/schema";
+import { analyzeCommercialHistory, buildCommercialAlertKey } from "../shared/commercial-intelligence";
 import { ENV } from "./_core/env";
-import { PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS } from "../shared/product-monitor";
+import {
+  PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS,
+  shouldRecordAvailabilityTransition,
+  shouldRecordPriceObservation,
+} from "../shared/product-monitor";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -139,7 +144,51 @@ export async function listProducts(filters: {
 
 export async function listAdminProducts() {
   const db = await requireDb();
-  return db.select().from(products).orderBy(desc(products.createdAt), desc(products.id));
+  const catalog = await db.select().from(products).orderBy(desc(products.createdAt), desc(products.id));
+  return Promise.all(catalog.map(async product => ({
+    ...product,
+    commercial: await getProductCommercialInsights(product.id),
+  })));
+}
+
+export async function getProductCommercialInsights(productId: number) {
+  const db = await requireDb();
+  const [history, alerts] = await Promise.all([
+    db.select({ currentPrice: productPriceHistory.currentPrice, checkedAt: productPriceHistory.checkedAt })
+      .from(productPriceHistory).where(eq(productPriceHistory.productId, productId)).orderBy(asc(productPriceHistory.checkedAt)),
+    db.select().from(commercialAlerts).where(eq(commercialAlerts.productId, productId)).orderBy(desc(commercialAlerts.createdAt)),
+  ]);
+  const stats = analyzeCommercialHistory(history);
+  return { stats, alerts };
+}
+
+export async function listCommercialAlerts(status?: "unread" | "read" | "resolved") {
+  const db = await requireDb();
+  return db.select({
+    id: commercialAlerts.id,
+    productId: commercialAlerts.productId,
+    productTitle: products.title,
+    type: commercialAlerts.type,
+    status: commercialAlerts.status,
+    title: commercialAlerts.title,
+    message: commercialAlerts.message,
+    createdAt: commercialAlerts.createdAt,
+    readAt: commercialAlerts.readAt,
+    resolvedAt: commercialAlerts.resolvedAt,
+  }).from(commercialAlerts).innerJoin(products, eq(products.id, commercialAlerts.productId))
+    .where(status ? eq(commercialAlerts.status, status) : undefined)
+    .orderBy(desc(commercialAlerts.createdAt));
+}
+
+export async function updateCommercialAlertStatus(id: number, status: "read" | "resolved") {
+  const db = await requireDb();
+  const now = new Date();
+  const result = await db.update(commercialAlerts).set({
+    status,
+    readAt: status === "read" ? now : undefined,
+    resolvedAt: status === "resolved" ? now : undefined,
+  }).where(eq(commercialAlerts.id, id));
+  return result[0].affectedRows > 0;
 }
 
 export async function getProductById(id: number) {
@@ -344,6 +393,19 @@ export async function restartProviderMonitors(provider: string) {
     .where(and(eq(products.sourceProvider, provider), eq(products.monitorEnabled, true)));
 }
 
+export async function reactivateProductMonitor(id: number) {
+  const db = await requireDb();
+  const result = await db.update(products).set({
+    monitorEnabled: true,
+    availabilityStatus: "unknown",
+    lastCheckedAt: null,
+    nextCheckAt: new Date(),
+    lastSyncError: null,
+    syncFailureCount: 0,
+  }).where(and(eq(products.id, id), eq(products.monitorEnabled, true), eq(products.syncFailureCount, PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS)));
+  return result[0].affectedRows > 0;
+}
+
 export async function getScheduledJob(name: string) {
   const db = await requireDb();
   const result = await db.select().from(scheduledJobs).where(eq(scheduledJobs.name, name)).limit(1);
@@ -395,24 +457,85 @@ export async function listDueMonitorProducts(now: Date, limit = 200) {
 
 export async function updateProductMonitorSuccess(
   id: number,
-  snapshot: { provider: string; price: string; listPrice?: string | null; availability: "available" | "out_of_stock" | "unavailable" },
+  snapshot: { provider: string; itemId: string; price: string; listPrice?: string | null; availability: "available" | "out_of_stock" | "unavailable" },
   checkedAt: Date,
   nextCheckAt: Date,
 ) {
   const db = await requireDb();
   await db.transaction(async tx => {
-    const existing = await tx.select({ price: products.price }).from(products)
+    const existing = await tx.select({
+      price: products.price,
+      availabilityStatus: products.availabilityStatus,
+    }).from(products)
       .where(and(eq(products.id, id), or(isNull(products.lastCheckedAt), lte(products.lastCheckedAt, checkedAt))))
       .for("update").limit(1);
     if (!existing[0]) return;
-    if (String(existing[0].price) !== snapshot.price) {
+
+    const previousPrice = String(existing[0].price);
+    const priceChanged = shouldRecordPriceObservation(previousPrice, snapshot.price);
+    if (priceChanged) {
       await tx.insert(productPriceHistory).values({
         productId: id,
         provider: snapshot.provider,
-        previousPrice: String(existing[0].price),
+        externalProductId: snapshot.itemId,
+        previousPrice,
         currentPrice: snapshot.price,
         checkedAt,
       });
+    }
+    const availabilityChanged = existing[0].availabilityStatus !== "unknown" &&
+      shouldRecordAvailabilityTransition(existing[0].availabilityStatus, snapshot.availability);
+    if (availabilityChanged) {
+      await tx.insert(productAvailabilityHistory).values({
+        productId: id,
+        provider: snapshot.provider,
+        externalProductId: snapshot.itemId,
+        availabilityStatus: snapshot.availability,
+        checkedAt,
+      });
+    }
+
+    if (priceChanged || availabilityChanged) {
+      const recentHistory = await tx.select({ currentPrice: productPriceHistory.currentPrice, checkedAt: productPriceHistory.checkedAt })
+        .from(productPriceHistory).where(eq(productPriceHistory.productId, id)).orderBy(asc(productPriceHistory.checkedAt));
+      const commercial = analyzeCommercialHistory([...recentHistory, { currentPrice: snapshot.price, checkedAt }], checkedAt);
+      const alerts = [] as Array<typeof commercialAlerts.$inferInsert>;
+      if (priceChanged) {
+        const previous = Number(previousPrice);
+        const current = Number(snapshot.price);
+        const variation = previous > 0 ? ((current - previous) / previous) * 100 : 0;
+        if (Math.abs(variation) >= 10) {
+          const type = variation < 0 ? "price_drop" : "price_increase";
+          alerts.push({
+            productId: id,
+            type,
+            dedupeKey: buildCommercialAlertKey(id, type, checkedAt),
+            title: variation < 0 ? "Queda relevante de preço" : "Aumento relevante de preço",
+            message: `O preço mudou de R$ ${previous.toFixed(2)} para R$ ${current.toFixed(2)} (${Math.abs(variation).toFixed(1)}% ${variation < 0 ? "abaixo" : "acima"}).`,
+          });
+        }
+        if (commercial?.classification === "good_offer") {
+          alerts.push({
+            productId: id,
+            type: "good_offer",
+            dedupeKey: buildCommercialAlertKey(id, "good_offer", checkedAt),
+            title: "Boa oferta identificada",
+            message: commercial.justification,
+          });
+        }
+      }
+      if (availabilityChanged) {
+        alerts.push({
+          productId: id,
+          type: "availability_change",
+          dedupeKey: buildCommercialAlertKey(id, "availability_change", checkedAt),
+          title: "Alteração relevante de disponibilidade",
+          message: `A disponibilidade foi confirmada como ${snapshot.availability === "out_of_stock" ? "fora de estoque" : snapshot.availability === "unavailable" ? "indisponível" : "disponível"}.`,
+        });
+      }
+      for (const alert of alerts) {
+        await tx.insert(commercialAlerts).values(alert).onDuplicateKeyUpdate({ set: { dedupeKey: alert.dedupeKey } });
+      }
     }
     await tx.update(products).set({
       price: snapshot.price,

@@ -170,6 +170,16 @@ export const appRouter = router({
         };
       });
     }),
+    commercialAlerts: adminProcedure
+      .input(z.object({ status: z.enum(["unread", "read", "resolved"]).optional() }).optional())
+      .query(({ input }) => db.listCommercialAlerts(input?.status)),
+    markCommercialAlert: adminProcedure
+      .input(z.object({ id: z.number().int().positive(), status: z.enum(["read", "resolved"]) }))
+      .mutation(async ({ input }) => {
+        const updated = await db.updateCommercialAlertStatus(input.id, input.status);
+        if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Alerta não encontrado." });
+        return { success: true } as const;
+      }),
     markChannelAnnouncementPublished: adminProcedure
       .input(z.object({ productId: z.number().int().positive() }))
       .mutation(async ({ input }) => {
@@ -186,6 +196,13 @@ export const appRouter = router({
     syncProductNow: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ input }) => syncProductNow(input.id)),
+    reactivateProductMonitor: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input }) => {
+        const reactivated = await db.reactivateProductMonitor(input.id);
+        if (!reactivated) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "O produto não está pausado após atingir o limite de falhas." });
+        return { success: true } as const;
+      }),
     uploadImage: adminProcedure
       .input(z.object({
         contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),

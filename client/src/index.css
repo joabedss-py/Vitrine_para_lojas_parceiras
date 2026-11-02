@@ -351,8 +351,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .admin-row-monitor { display: grid; justify-items: start; gap: 5px; margin-top: 9px; color: #707c80; font-size: 10px; }
 .admin-row-monitor strong { color: #526a5a; font-size: 10px; }
 .admin-row-monitor > span { line-height: 1.4; }
-.admin-row-monitor .monitor-generic-error { color: #a53e2d; }
-.admin-row-monitor .small-button:disabled { cursor: wait; opacity: .6; }
+  .admin-row-monitor .monitor-generic-error { color: #a53e2d; }
+  .admin-row-monitor .monitor-commercial-summary { color: #526a5a; font-size: 11px; }
+  .admin-row-monitor .small-button:disabled { cursor: wait; opacity: .6; }
+
 
 @media (max-width: 620px) {
   .monitor-status-grid { grid-template-columns: 1fr; }
