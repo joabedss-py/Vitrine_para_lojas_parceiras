@@ -43,6 +43,13 @@
       "when": 1793569064816,
       "tag": "0005_product_monitor_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1793625642671,
+      "tag": "0006_whatsapp_product_announcements",
+      "breakpoints": true
     }
   ]
 }

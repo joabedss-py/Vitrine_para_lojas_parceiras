@@ -1,7 +1,7 @@
-import { and, asc, desc, eq, isNull, like, lt, lte, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, like, lt, lte, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import type { InsertMarketplaceConnection, InsertProduct, InsertUser } from "../drizzle/schema";
-import { marketplaceConnections, productPriceHistory, products, scheduledJobs, users } from "../drizzle/schema";
+import { marketplaceConnections, productPriceHistory, products, scheduledJobs, users, whatsappProductAnnouncements } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS } from "../shared/product-monitor";
 
@@ -174,6 +174,23 @@ export async function createProduct(product: InsertProduct): Promise<number> {
   return id;
 }
 
+export async function createProductWithWhatsAppAnnouncement(product: InsertProduct, queueAnnouncement: boolean) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const inserted = await tx.insert(products).values(product).$returningId();
+    const id = inserted[0]?.id;
+    if (!id) throw new Error("Product insert did not return an id");
+    let announcementId: number | null = null;
+    if (queueAnnouncement) {
+      const [announcement] = await tx.insert(whatsappProductAnnouncements)
+        .values({ productId: id, nextAttemptAt: new Date() }).$returningId();
+      announcementId = announcement?.id ?? null;
+      if (!announcementId) throw new Error("WhatsApp announcement insert did not return an id");
+    }
+    return { id, notificationQueued: queueAnnouncement, announcementId };
+  });
+}
+
 export async function updateProduct(id: number, product: Omit<InsertProduct, "id" | "createdAt">) {
   const db = await requireDb();
   await db.update(products).set(product).where(eq(products.id, id));
@@ -182,9 +199,101 @@ export async function updateProduct(id: number, product: Omit<InsertProduct, "id
 export async function deleteProduct(id: number) {
   const db = await requireDb();
   await db.transaction(async tx => {
+    await tx.delete(whatsappProductAnnouncements).where(eq(whatsappProductAnnouncements.productId, id));
     await tx.delete(productPriceHistory).where(eq(productPriceHistory.productId, id));
     await tx.delete(products).where(eq(products.id, id));
   });
+}
+
+export async function listDueWhatsAppAnnouncements(now: Date, limit = 20) {
+  const db = await requireDb();
+  const duePending = and(
+    eq(whatsappProductAnnouncements.status, "pending"),
+    lte(whatsappProductAnnouncements.nextAttemptAt, now),
+  );
+  const expiredLease = and(
+    eq(whatsappProductAnnouncements.status, "sending"),
+    or(isNull(whatsappProductAnnouncements.lockedUntil), lte(whatsappProductAnnouncements.lockedUntil, now)),
+  );
+  return db.select({ id: whatsappProductAnnouncements.id })
+    .from(whatsappProductAnnouncements)
+    .where(or(duePending, expiredLease))
+    .orderBy(asc(whatsappProductAnnouncements.nextAttemptAt), asc(whatsappProductAnnouncements.id))
+    .limit(limit);
+}
+
+export async function claimWhatsAppAnnouncement(id: number, now: Date, leaseMs: number, maxAttempts: number) {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const [row] = await tx.select().from(whatsappProductAnnouncements)
+      .where(eq(whatsappProductAnnouncements.id, id)).for("update").limit(1);
+    if (!row || row.status === "sent" || row.status === "failed") return null;
+    if (row.status === "pending" && row.nextAttemptAt > now) return null;
+    if (row.status === "sending" && row.lockedUntil && row.lockedUntil > now) return null;
+    if (row.attemptCount >= maxAttempts) {
+      await tx.update(whatsappProductAnnouncements).set({
+        status: "failed",
+        lockedUntil: null,
+        lastErrorCode: row.status === "sending" ? "lease_expired_max_attempts" : "retry_limit_reached",
+      }).where(eq(whatsappProductAnnouncements.id, id));
+      return null;
+    }
+
+    const attemptCount = row.attemptCount + 1;
+    await tx.update(whatsappProductAnnouncements).set({
+      status: "sending",
+      attemptCount,
+      lockedUntil: new Date(now.getTime() + leaseMs),
+    }).where(eq(whatsappProductAnnouncements.id, id));
+    return { productId: row.productId, attemptCount };
+  });
+}
+
+export async function markWhatsAppAnnouncementSent(id: number, messageId: string, sentAt: Date) {
+  const db = await requireDb();
+  await db.update(whatsappProductAnnouncements).set({
+    status: "sent",
+    providerMessageId: messageId.slice(0, 128),
+    sentAt,
+    lockedUntil: null,
+    lastErrorCode: null,
+  }).where(eq(whatsappProductAnnouncements.id, id));
+}
+
+export async function markWhatsAppAnnouncementFailure(
+  id: number,
+  errorCode: string,
+  nextAttemptAt: Date,
+  permanentlyFailed: boolean,
+) {
+  const db = await requireDb();
+  await db.update(whatsappProductAnnouncements).set({
+    status: permanentlyFailed ? "failed" : "pending",
+    nextAttemptAt,
+    lockedUntil: null,
+    lastErrorCode: errorCode.slice(0, 64),
+  }).where(eq(whatsappProductAnnouncements.id, id));
+}
+
+export async function getWhatsAppAnnouncementCounts() {
+  const db = await requireDb();
+  const rows = await db.select({ status: whatsappProductAnnouncements.status, total: count() })
+    .from(whatsappProductAnnouncements)
+    .groupBy(whatsappProductAnnouncements.status);
+  const counts = { pending: 0, sending: 0, sent: 0, failed: 0 };
+  for (const row of rows) counts[row.status] = Number(row.total);
+  return counts;
+}
+
+export async function requeueFailedWhatsAppAnnouncements(now: Date) {
+  const db = await requireDb();
+  await db.update(whatsappProductAnnouncements).set({
+    status: "pending",
+    attemptCount: 0,
+    nextAttemptAt: now,
+    lockedUntil: null,
+    lastErrorCode: null,
+  }).where(eq(whatsappProductAnnouncements.status, "failed"));
 }
 
 export async function getMarketplaceConnection(provider: string) {

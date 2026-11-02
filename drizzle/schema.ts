@@ -7,6 +7,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -96,6 +97,28 @@ export const scheduledJobs = mysqlTable("scheduled_jobs", {
 
 export type ScheduledJob = typeof scheduledJobs.$inferSelect;
 export type InsertScheduledJob = typeof scheduledJobs.$inferInsert;
+
+export const whatsappProductAnnouncements = mysqlTable(
+  "whatsapp_product_announcements",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    productId: int("productId").notNull(),
+    status: mysqlEnum("status", ["pending", "sending", "sent", "failed"]).notNull().default("pending"),
+    attemptCount: int("attemptCount").notNull().default(0),
+    nextAttemptAt: timestamp("nextAttemptAt").notNull().defaultNow(),
+    lockedUntil: timestamp("lockedUntil"),
+    lastErrorCode: varchar("lastErrorCode", { length: 64 }),
+    providerMessageId: varchar("providerMessageId", { length: 128 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    sentAt: timestamp("sentAt"),
+  },
+  table => ({
+    productUnique: uniqueIndex("whatsapp_product_announcements_product_uq").on(table.productId),
+    dueIdx: index("whatsapp_product_announcements_due_idx").on(table.status, table.nextAttemptAt),
+  }),
+);
+
+export type WhatsappProductAnnouncement = typeof whatsappProductAnnouncements.$inferSelect;
 
 export const productPriceHistory = mysqlTable(
   "product_price_history",

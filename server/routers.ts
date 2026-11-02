@@ -12,6 +12,7 @@ import { startMercadoLivreOAuth } from "./_core/marketplaceOAuth";
 import { configureProductMonitorSchedule, disableProductMonitorSchedule, disconnectMercadoLivre as disconnectMercadoLivreConnection, syncProductNow } from "./productMonitor";
 import { getMarketplaceProvider, listMarketplaceProviders } from "./marketplaces/registry";
 import { mercadoLivreCredentialsConfigured } from "./marketplaces/mercadoLivreOAuth";
+import { announceNewProduct, configureWhatsAppAnnouncementsSchedule, disableWhatsAppAnnouncementsSchedule, retryFailedWhatsAppAnnouncements, WHATSAPP_ANNOUNCEMENTS_JOB_NAME, whatsappCredentialsConfigured } from "./whatsappAnnouncements";
 import { adminProcedure, isAdminAuthorized, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 
@@ -158,6 +159,22 @@ export const appRouter = router({
         isProduction: ENV.isProduction,
       };
     }),
+    whatsappStatus: adminProcedure.query(async () => {
+      const [schedule, counts] = await Promise.all([
+        db.getScheduledJob(WHATSAPP_ANNOUNCEMENTS_JOB_NAME),
+        db.getWhatsAppAnnouncementCounts(),
+      ]);
+      return {
+        configured: whatsappCredentialsConfigured(),
+        scheduleEnabled: Boolean(schedule?.enabled),
+        isProduction: ENV.isProduction,
+        pendingCount: counts.pending + counts.sending,
+        failedCount: counts.failed,
+      };
+    }),
+    configureWhatsAppSchedule: adminProcedure.mutation(() => configureWhatsAppAnnouncementsSchedule()),
+    disableWhatsAppSchedule: adminProcedure.mutation(() => disableWhatsAppAnnouncementsSchedule()),
+    retryWhatsAppNotifications: adminProcedure.mutation(() => retryFailedWhatsAppAnnouncements()),
     connectMercadoLivre: adminProcedure.mutation(({ ctx }) => startMercadoLivreOAuth(ctx.res)),
     disconnectMercadoLivre: adminProcedure.mutation(() => disconnectMercadoLivreConnection()),
     configureMonitorSchedule: adminProcedure.mutation(() => configureProductMonitorSchedule()),
@@ -184,8 +201,23 @@ export const appRouter = router({
         }
       }),
     create: adminProcedure.input(productFields).mutation(async ({ input }) => {
-      const id = await db.createProduct(input);
-      return { id };
+      const queueAnnouncement = input.isActive && ENV.isProduction;
+      const created = await db.createProductWithWhatsAppAnnouncement(input, queueAnnouncement);
+      let whatsappStatus: "sent" | "pending" | "failed" | "not_configured" | "inactive";
+      if (!input.isActive) {
+        whatsappStatus = "inactive";
+      } else if (!created.announcementId) {
+        whatsappStatus = ENV.isProduction ? "pending" : "not_configured";
+      } else {
+        try {
+          const status = await announceNewProduct(created.announcementId);
+          whatsappStatus = status === "skipped" ? "pending" : status;
+        } catch (error) {
+          logInternalError("Queue WhatsApp product announcement", error);
+          whatsappStatus = "pending";
+        }
+      }
+      return { id: created.id, whatsappStatus };
     }),
     update: adminProcedure
       .input(productFieldsBase.extend({ id: z.number().int().positive() }).superRefine(validateProductFields))

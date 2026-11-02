@@ -10,6 +10,20 @@ export const ENV = {
   get googleClientSecret() { return process.env.GOOGLE_CLIENT_SECRET ?? ""; },
   get mercadoLivreClientId() { return process.env.MERCADOLIVRE_CLIENT_ID ?? ""; },
   get mercadoLivreClientSecret() { return process.env.MERCADOLIVRE_CLIENT_SECRET ?? ""; },
+  get whatsappAccessToken() { return process.env.WHATSAPP_ACCESS_TOKEN ?? ""; },
+  get whatsappPhoneNumberId() { return process.env.WHATSAPP_PHONE_NUMBER_ID ?? ""; },
+  get whatsappGroupId() { return process.env.WHATSAPP_GROUP_ID ?? ""; },
+  get publicSiteOrigin() {
+    const fallback = "https://vitrineml-ecps2ye7.manus.space";
+    const candidate = process.env.PUBLIC_SITE_ORIGIN?.trim();
+    if (!candidate) return fallback;
+    try {
+      const url = new URL(candidate);
+      return url.protocol === "https:" && !url.username && !url.password ? url.origin : fallback;
+    } catch {
+      return fallback;
+    }
+  },
   get isProduction() { return process.env.NODE_ENV === "production"; },
   get forgeApiUrl() { return process.env.MANUS_API_URL ?? ""; },
   get forgeApiKey() { return process.env.MANUS_API_KEY ?? ""; },

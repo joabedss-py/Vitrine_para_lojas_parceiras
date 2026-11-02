@@ -167,10 +167,14 @@ export default function AdminPage() {
   const products = trpc.admin.list.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
   const marketplaceProviders = trpc.admin.marketplaceProviders.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
   const marketplaceStatus = trpc.admin.marketplaceStatus.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
+  const whatsappStatus = trpc.admin.whatsappStatus.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
   const connectMercadoLivre = trpc.admin.connectMercadoLivre.useMutation();
   const disconnectMercadoLivre = trpc.admin.disconnectMercadoLivre.useMutation();
   const configureMonitorSchedule = trpc.admin.configureMonitorSchedule.useMutation();
   const disableMonitorSchedule = trpc.admin.disableMonitorSchedule.useMutation();
+  const configureWhatsAppSchedule = trpc.admin.configureWhatsAppSchedule.useMutation();
+  const disableWhatsAppSchedule = trpc.admin.disableWhatsAppSchedule.useMutation();
+  const retryWhatsAppNotifications = trpc.admin.retryWhatsAppNotifications.useMutation();
   const utils = trpc.useUtils();
   const uploadImage = trpc.admin.uploadImage.useMutation();
   const create = trpc.admin.create.useMutation();
@@ -183,6 +187,7 @@ export default function AdminPage() {
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
   const [monitorMessage, setMonitorMessage] = useState("");
+  const [whatsappMessage, setWhatsappMessage] = useState("");
   const [loginError, setLoginError] = useState("");
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const [descriptionEditorSettings, setDescriptionEditorSettings] = useState(loadDescriptionEditorSettings);
@@ -265,6 +270,31 @@ export default function AdminPage() {
     }
   }
 
+  async function toggleWhatsAppSchedule() {
+    const status = whatsappStatus.data;
+    if (!status?.isProduction || !status.configured) return;
+    setWhatsappMessage("");
+    try {
+      if (status.scheduleEnabled) await disableWhatsAppSchedule.mutateAsync(undefined);
+      else await configureWhatsAppSchedule.mutateAsync(undefined);
+      await whatsappStatus.refetch();
+      setWhatsappMessage("Agendamento de retentativas atualizado.");
+    } catch {
+      setWhatsappMessage("Não foi possível atualizar o agendamento de retentativas.");
+    }
+  }
+
+  async function retryFailedWhatsApp() {
+    setWhatsappMessage("");
+    try {
+      const result = await retryWhatsAppNotifications.mutateAsync(undefined);
+      await whatsappStatus.refetch();
+      setWhatsappMessage(`Reenvio concluído: ${result.sent} enviado(s), ${result.pending} pendente(s) e ${result.failed} falho(s).`);
+    } catch {
+      setWhatsappMessage("Não foi possível reprocessar os anúncios falhos.");
+    }
+  }
+
   async function disconnectMarketplace() {
     if (!window.confirm("Desconectar Mercado Livre e reiniciar os estados de disponibilidade monitorados?")) return;
     setMonitorMessage("");
@@ -282,6 +312,7 @@ export default function AdminPage() {
       utils.admin.list.invalidate(),
       utils.products.list.invalidate(),
       utils.products.categories.invalidate(),
+      utils.admin.whatsappStatus.invalidate(),
     ]);
   }
 
@@ -426,7 +457,8 @@ export default function AdminPage() {
         return;
       }
     }
-    const cardInterestFree = form.cardInterestChoice === "unknown" ? null : form.cardInterestChoice === "no-interest";
+      const cardInterestFree = form.cardInterestChoice === "unknown" ? null : form.cardInterestChoice === "no-interest";
+    let successNotice = "";
     try {
       let imageUrl = form.imageUrl;
       if (imageFile) {
@@ -463,14 +495,18 @@ export default function AdminPage() {
       };
       if (form.id) {
         await update.mutateAsync({ id: form.id, ...fields } as Parameters<typeof update.mutateAsync>[0]);
-        setNotice("Produto atualizado.");
+        successNotice = "Produto atualizado.";
       } else {
-        await create.mutateAsync(fields as Parameters<typeof create.mutateAsync>[0]);
-        setNotice("Produto cadastrado.");
+        const created = await create.mutateAsync(fields as Parameters<typeof create.mutateAsync>[0]);
+        if (created.whatsappStatus === "sent") successNotice = "Produto cadastrado e anunciado no grupo WhatsApp.";
+        else if (created.whatsappStatus === "pending") successNotice = "Produto cadastrado; o anúncio ficou pendente de reenvio no WhatsApp.";
+        else if (created.whatsappStatus === "failed") successNotice = "Produto cadastrado; o anúncio falhou. Confira o painel do WhatsApp.";
+        else if (created.whatsappStatus === "inactive") successNotice = "Produto cadastrado sem anúncio porque está oculto na vitrine.";
+        else successNotice = "Produto cadastrado. Configure o WhatsApp para enviar anúncios automáticos.";
       }
       await refreshCatalog();
       resetForm();
-      setNotice(form.id ? "Produto atualizado." : "Produto cadastrado.");
+      setNotice(successNotice);
     } catch {
       setFormError("Não foi possível salvar o produto. Tente novamente.");
     }
@@ -573,6 +609,38 @@ export default function AdminPage() {
             </>
           )}
           {monitorMessage && <p className="form-hint monitor-message" role="status">{monitorMessage}</p>}
+        </section>
+
+        <section className="admin-panel monitor-status-panel" aria-labelledby="whatsapp-status-title">
+          <div className="monitor-panel-heading">
+            <div><h2 id="whatsapp-status-title">Anúncios automáticos no WhatsApp</h2><p>Produtos novos ativos são enviados como imagem e legenda para um grupo criado pela Groups API oficial. O anúncio abre a página da Vitrine; o botão de compra continua usando o link de afiliado cadastrado.</p></div>
+            {whatsappStatus.data && <span className={`monitor-environment${whatsappStatus.data.isProduction ? " is-production" : ""}`}>{whatsappStatus.data.isProduction ? "Produção" : "Ambiente de teste"}</span>}
+          </div>
+          {whatsappStatus.isLoading ? <p className="form-hint">Carregando estado do WhatsApp…</p> : whatsappStatus.error ? <p className="form-error" role="status">Não foi possível carregar o estado do WhatsApp.</p> : whatsappStatus.data && (
+            <>
+              <div className="monitor-status-grid">
+                <div><span>Credenciais e grupo</span><strong>{whatsappStatus.data.configured ? "Configurados" : "Não configurados"}</strong></div>
+                <div><span>Retentativas automáticas</span><strong>{whatsappStatus.data.scheduleEnabled ? "Ativas" : "Inativas"}</strong></div>
+                <div><span>Avisos pendentes</span><strong>{whatsappStatus.data.pendingCount}</strong></div>
+                <div><span>Avisos falhos</span><strong>{whatsappStatus.data.failedCount}</strong></div>
+              </div>
+              <div className="monitor-controls">
+                <button className="small-button" type="button" onClick={() => void toggleWhatsAppSchedule()} disabled={!whatsappStatus.data.isProduction || !whatsappStatus.data.configured || configureWhatsAppSchedule.isPending || disableWhatsAppSchedule.isPending}>
+                  {(configureWhatsAppSchedule.isPending || disableWhatsAppSchedule.isPending) && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                  {whatsappStatus.data.scheduleEnabled ? "Desativar retentativas" : "Ativar retentativas"}
+                </button>
+                <button className="small-button" type="button" onClick={() => void retryFailedWhatsApp()} disabled={!whatsappStatus.data.isProduction || !whatsappStatus.data.configured || whatsappStatus.data.failedCount === 0 || retryWhatsAppNotifications.isPending}>
+                  {retryWhatsAppNotifications.isPending && <LoaderCircle className="animate-spin" aria-hidden="true" />}
+                  Reprocessar avisos falhos
+                </button>
+              </div>
+              {!whatsappStatus.data.configured && <p className="form-hint">Configure `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` e `WHATSAPP_GROUP_ID` como segredos de servidor. Use o Group ID de um grupo criado pela Groups API; canais e grupos comuns não são compatíveis.</p>}
+              <p className="form-hint">A conta precisa ser Official Business Account (OBA), usar Cloud API e ter a permissão `whatsapp_business_messaging`. Os participantes entram pelo link oficial de convite.</p>
+              <p className="form-hint">A fila evita registros repetidos por produto; se a Meta aceitar uma mensagem e a resposta se perder, uma retentativa ainda pode duplicar o anúncio.</p>
+              {!whatsappStatus.data.isProduction && <p className="form-hint">O envio e o agendamento ficam disponíveis somente na versão publicada; este ambiente não envia mensagens reais.</p>}
+            </>
+          )}
+          {whatsappMessage && <p className="form-hint monitor-message" role="status">{whatsappMessage}</p>}
         </section>
 
         <div className="admin-columns">

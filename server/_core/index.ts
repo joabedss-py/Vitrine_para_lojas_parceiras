@@ -8,6 +8,7 @@ import { registerMercadoLivreOAuthRoutes } from "./marketplaceOAuth";
 import { publicPlatformScript } from "./publicConfig";
 import { appRouter } from "../routers";
 import { claimProductMonitorRun, isRegisteredProductMonitorTask, markProductMonitorRun, PRODUCT_MONITOR_CALLBACK_PATH, runDueProductChecks } from "../productMonitor";
+import { claimWhatsAppAnnouncementsRun, isRegisteredWhatsAppAnnouncementsTask, markWhatsAppAnnouncementsRun, runDueWhatsAppAnnouncements, WHATSAPP_ANNOUNCEMENTS_CALLBACK_PATH } from "../whatsappAnnouncements";
 import { createContext } from "./context";
 import { sdk } from "./sdk";
 import { serveStatic, setupVite } from "./vite";
@@ -44,6 +45,26 @@ async function startServer() {
       }
       const result = await runDueProductChecks();
       await markProductMonitorRun(identity.taskUid);
+      res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post(WHATSAPP_ANNOUNCEMENTS_CALLBACK_PATH, async (req, res, next) => {
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const identity = await sdk.authenticateRequest(req);
+      if (!identity.isCron || !identity.taskUid || !(await isRegisteredWhatsAppAnnouncementsTask(identity.taskUid))) {
+        res.status(403).json({ error: "Não autorizado." });
+        return;
+      }
+      const claimed = await claimWhatsAppAnnouncementsRun(identity.taskUid);
+      if (!claimed) {
+        res.status(200).json({ processed: 0, sent: 0, pending: 0, failed: 0, skipped: "already_running" });
+        return;
+      }
+      const result = await runDueWhatsAppAnnouncements();
+      await markWhatsAppAnnouncementsRun(identity.taskUid);
       res.status(200).json(result);
     } catch (error) {
       next(error);
