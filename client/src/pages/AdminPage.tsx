@@ -37,21 +37,6 @@ type ProductForm = {
 
 type AdminProduct = RouterOutputs["admin"]["list"][number];
 type ChannelAnnouncement = RouterOutputs["admin"]["channelAnnouncements"][number];
-type CommercialAlert = RouterOutputs["admin"]["commercialAlerts"][number];
-
-function commercialClassificationText(value: string) {
-  if (value === "good_offer") return "Boa oferta";
-  if (value === "normal_price") return "Preço normal";
-  if (value === "high_price") return "Preço elevado";
-  return "Histórico insuficiente";
-}
-
-function commercialAlertTypeText(value: CommercialAlert["type"]) {
-  if (value === "price_drop") return "Queda de preço";
-  if (value === "price_increase") return "Aumento de preço";
-  if (value === "good_offer") return "Boa oferta";
-  return "Disponibilidade";
-}
 
 function formatMonitorDate(value: Date | null | undefined) {
   if (!value) return null;
@@ -185,8 +170,6 @@ export default function AdminPage() {
   const marketplaceProviders = trpc.admin.marketplaceProviders.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
   const marketplaceStatus = trpc.admin.marketplaceStatus.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
   const channelAnnouncements = trpc.admin.channelAnnouncements.useQuery(undefined, { enabled: auth.data?.isAdmin === true });
-  const commercialAlerts = trpc.admin.commercialAlerts.useQuery({ status: "unread" }, { enabled: auth.data?.isAdmin === true });
-  const markCommercialAlert = trpc.admin.markCommercialAlert.useMutation();
   const connectMercadoLivre = trpc.admin.connectMercadoLivre.useMutation();
   const disconnectMercadoLivre = trpc.admin.disconnectMercadoLivre.useMutation();
   const configureMonitorSchedule = trpc.admin.configureMonitorSchedule.useMutation();
@@ -625,22 +608,6 @@ export default function AdminPage() {
           {channelAnnouncementMessage && <p className="form-hint monitor-message" role="status">{channelAnnouncementMessage}</p>}
         </section>
 
-        <section className="admin-panel monitor-status-panel" aria-labelledby="commercial-alerts-title">
-          <div className="monitor-panel-heading">
-            <div><h2 id="commercial-alerts-title">Inteligência comercial</h2><p>Alertas de preço e disponibilidade para revisão manual. Nenhum alerta altera preços manuais, Pix, cartão, frete ou links de afiliado.</p></div>
-            <span className="monitor-environment">Somente leitura</span>
-          </div>
-          {commercialAlerts.isLoading ? <p className="form-hint">Carregando alertas…</p> : commercialAlerts.error ? <p className="form-error" role="status">Não foi possível carregar os alertas comerciais.</p> : commercialAlerts.data?.length ? (
-            <div className="channel-announcement-list">
-              {commercialAlerts.data.map(alert => <article className="channel-announcement-card" key={alert.id}>
-                <div><strong>{alert.title}</strong><span className="form-hint">{alert.productTitle} · {commercialAlertTypeText(alert.type)} · {formatMonitorDate(alert.createdAt) ?? "Agora"}</span></div>
-                <p>{alert.message}</p>
-                <button className="small-button" type="button" disabled={markCommercialAlert.isPending} onClick={() => void markCommercialAlert.mutateAsync({ id: alert.id, status: "resolved" }).then(() => commercialAlerts.refetch())}>Resolver</button>
-              </article>)}
-            </div>
-          ) : <div className="admin-empty">Nenhum alerta comercial não lido.</div>}
-        </section>
-
         <div className="admin-columns">
           <section className="admin-panel" aria-labelledby="form-title">
             <h2 id="form-title">{form.id ? "Editar produto" : "Adicionar produto"}</h2>
@@ -784,7 +751,6 @@ function AdminProductRow({ product, canVerify, onEdit, onDelete }: { product: Ad
           <strong>{product.sourceProvider === "mercado_livre" ? "Mercado Livre" : "Origem"} · {availabilityText(currentAvailability)}</strong>
           {checkedAt && <span>Última verificação: {checkedAt}</span>}
           {product.lastSyncError && <span className="monitor-generic-error">{product.syncFailureCount >= PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS ? `Monitoramento automático pausado após ${PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS} falhas. Corrija a URL ou reconecte a conta e tente verificar novamente.` : "A última tentativa falhou; o preço e a disponibilidade anteriores foram mantidos."}</span>}
-          {product.commercial?.stats && <span className="monitor-commercial-summary">{commercialClassificationText(product.commercial.stats.classification)} · {product.commercial.stats.justification}</span>}
           {syncMessage && <span className="monitor-generic-error" role="status">{syncMessage}</span>}
           <button className="small-button" type="button" onClick={() => void verifyNow()} disabled={!canVerify || syncProduct.isPending} aria-label={`Verificar disponibilidade de ${product.title}`} title={canVerify ? undefined : "A verificação fica disponível após conexão em produção."}>
             {syncProduct.isPending ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}

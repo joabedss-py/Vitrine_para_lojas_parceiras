@@ -129,55 +129,13 @@ export const productPriceHistory = mysqlTable(
     id: int("id").autoincrement().primaryKey(),
     productId: int("productId").notNull(),
     provider: varchar("provider", { length: 40 }).notNull(),
-    externalProductId: varchar("externalProductId", { length: 40 }),
-    previousPrice: decimal("previousPrice", { precision: 65, scale: 2 }),
+    previousPrice: decimal("previousPrice", { precision: 65, scale: 2 }).notNull(),
     currentPrice: decimal("currentPrice", { precision: 65, scale: 2 }).notNull(),
     checkedAt: timestamp("checkedAt").defaultNow().notNull(),
   },
   table => ({
     productCheckedIdx: index("product_price_history_product_checked_idx").on(table.productId, table.checkedAt),
-    providerExternalIdx: index("product_price_history_provider_external_idx").on(table.provider, table.externalProductId),
   }),
 );
 
 export type ProductPriceHistory = typeof productPriceHistory.$inferSelect;
-
-export const productAvailabilityHistory = mysqlTable(
-  "product_availability_history",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    productId: int("productId").notNull(),
-    provider: varchar("provider", { length: 40 }).notNull(),
-    externalProductId: varchar("externalProductId", { length: 40 }),
-    availabilityStatus: mysqlEnum("availabilityStatus", ["available", "out_of_stock", "unavailable"]).notNull(),
-    checkedAt: timestamp("checkedAt").defaultNow().notNull(),
-  },
-  table => ({
-    productCheckedIdx: index("product_availability_history_product_checked_idx").on(table.productId, table.checkedAt),
-  }),
-);
-
-export type ProductAvailabilityHistory = typeof productAvailabilityHistory.$inferSelect;
-
-export const commercialAlerts = mysqlTable(
-  "commercial_alerts",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    productId: int("productId").notNull(),
-    type: mysqlEnum("type", ["price_drop", "price_increase", "good_offer", "availability_change"]).notNull(),
-    status: mysqlEnum("status", ["unread", "read", "resolved"]).notNull().default("unread"),
-    dedupeKey: varchar("dedupeKey", { length: 255 }).notNull(),
-    title: varchar("title", { length: 180 }).notNull(),
-    message: text("message").notNull(),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    readAt: timestamp("readAt"),
-    resolvedAt: timestamp("resolvedAt"),
-  },
-  table => ({
-    productCreatedIdx: index("commercial_alerts_product_created_idx").on(table.productId, table.createdAt),
-    statusCreatedIdx: index("commercial_alerts_status_created_idx").on(table.status, table.createdAt),
-    dedupeUnique: uniqueIndex("commercial_alerts_dedupe_uq").on(table.dedupeKey),
-  }),
-);
-
-export type CommercialAlert = typeof commercialAlerts.$inferSelect;

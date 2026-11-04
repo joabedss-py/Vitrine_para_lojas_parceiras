@@ -12,7 +12,6 @@ import {
   PRODUCT_MONITOR_WORKER_INTERVAL_MINUTES,
   canAutomaticallyRetryProductMonitor,
   productMonitorRetryDelayMs,
-  parseRetryAfterMs,
 } from "../shared/product-monitor";
 
 export const PRODUCT_MONITOR_JOB_NAME = "vitrineml-product-monitor";
