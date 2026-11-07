@@ -1,5 +1,6 @@
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
+import AdminMonitoringPage from "@/pages/AdminMonitoringPage";
 import AdminPage from "@/pages/AdminPage";
 import Home from "@/pages/Home";
 import ProductDetailPage from "@/pages/ProductDetailPage";
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/produto/:id">
         {params => <ProductDetailPage id={Number(params.id)} />}
       </Route>
+      <Route path="/admin/monitoramento" component={AdminMonitoringPage} />
       <Route path="/admin" component={AdminPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

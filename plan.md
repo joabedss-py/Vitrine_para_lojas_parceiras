@@ -1,10 +1,14 @@
-# Plano: monitoramento de preço e disponibilidade de produtos
+# Plano: catálogo afiliado multiloja e monitoramento
 
 ## Objetivo e decisões
 
-Adicionar ao catálogo uma opção de monitoramento automático de preço e disponibilidade, começando pelo Mercado Livre e usando uma arquitetura de adaptadores por loja. Cada loja futura exigirá um adaptador explícito para a sua API ou feed oficial; o sistema não tentará raspar páginas arbitrárias.
+A vitrine aceita um destino de afiliado HTTPS de qualquer e-commerce, incluindo Mercado Livre, Shopee e outras lojas. O botão “Compre aqui” usa exatamente o `affiliateUrl` salvo, sem resolver encurtadores, visitar esse destino no servidor ou substituir parâmetros de afiliado. O campo opcional de loja identifica a origem comercial; o reconhecimento visual do domínio é apenas informativo.
 
-O URL de afiliado existente continua sendo o destino exato do botão “Compre aqui”. O monitor terá um URL canônico/ID de produto separado, validado por adaptador e usado somente no servidor. Para Mercado Livre será usado OAuth 2.0 de leitura (`read` e `offline_access`) e a API oficial. O acesso exige credenciais de uma aplicação de desenvolvedor e autorização da conta Mercado Livre; segredos não serão colocados no navegador, no código ou no Git. Access/refresh tokens ficam cifrados com AES-256-GCM; refresh tokens, que são rotativos e de uso único, serão substituídos atomicamente.
+A configuração do monitoramento sai do cadastro de produtos e passa para a área restrita `/admin/monitoramento`. O cadastro `/admin` continua responsável pelo catálogo, preços, imagens e link de compra. `sourceProvider` e `sourceUrl` identificam separadamente a fonte canônica que o monitor consulta; nunca são deduzidos do link de afiliado.
+
+O monitor usa adaptadores explícitos por loja e API/feed oficial; não raspa páginas arbitrárias. O único adaptador atualmente implementado é o Mercado Livre. Links afiliados Shopee e de outras lojas podem ser cadastrados e usados como destino de compra, mas monitoramento automático dessas lojas só será habilitado quando houver adaptador oficial e sua autenticação correspondente.
+
+Para Mercado Livre será usado OAuth 2.0 de leitura (`read` e `offline_access`) e a API oficial. O acesso exige credenciais de uma aplicação de desenvolvedor e autorização da conta Mercado Livre; segredos não serão colocados no navegador, no código ou no Git. Access/refresh tokens ficam cifrados com AES-256-GCM; refresh tokens, que são rotativos e de uso único, serão substituídos atomicamente.
 
 O administrador pode ativar/desativar o monitor por produto, consultar o último resultado e solicitar uma verificação manual. O Heartbeat do Webdev acorda a cada 15 minutos e reivindica o job com um lease para impedir callbacks duplicados; cada produto confirmado só volta a ser consultado após seis horas. As falhas recebem backoff exponencial, respeitam `Retry-After` e pausam a automação daquele produto após oito tentativas até correção/reconexão; erros técnicos não mudam preço nem marcam o item como esgotado.
 
@@ -12,19 +16,23 @@ O preço oficial da listagem atualizará o preço à vista da Vitrine; preço or
 
 ## Implementação e estrutura
 
-- `drizzle/schema.ts` e uma migração aditiva armazenam provedor/URL/ID de origem, ativação do monitor, disponibilidade, instante da última verificação e diagnóstico resumido. Uma tabela de conexão de marketplace guarda a conta conectada e refresh token cifrado; um histórico de alterações de preço preserva valor anterior, novo valor e horário.
-- `server/marketplaces/` define a interface `MarketplaceProvider`, o registro de adaptadores e a primeira implementação do Mercado Livre. O adaptador valida origem/domínio e ID canônico, chama somente `api.mercadolibre.com`, valida item `MLB`/BRL e transforma a resposta em um snapshot normalizado. O adaptador seguinte poderá ser adicionado sem reescrever o scheduler nem as páginas públicas.
-- `server/_core/marketplaceOAuth.ts` implementa o callback OAuth com `state`, redirects fixos e cookie `__Host-` HttpOnly/Secure/Lax. `server/marketplaces/mercadoLivreOAuth.ts` gerencia o escopo mínimo de leitura e rotação de tokens; `tokenVault.ts` cifra tokens. As credenciais são obtidas pelo mecanismo protegido de Secrets do Webdev.
-- `server/productMonitor.ts`, `server/db.ts` e `server/routers.ts` coordenam consulta manual e agendada, controle de falhas/backoff, histórico, procedimentos somente administrativos e saída pública do estado verificado. `server/_core/index.ts` registra o callback Heartbeat autenticado conforme o contrato Webdev.
-- `client/src/pages/AdminPage.tsx` adiciona seleção do adaptador Mercado Livre, URL canônico, chave liga/desliga, conexão OAuth da conta e estado/ação de sincronização. `client/src/pages/Home.tsx`, `ProductDetailPage.tsx` e `ProductPricing.tsx` apresentam disponibilidade sem expor detalhes internos; CSS reaproveita a identidade e os componentes existentes.
+- `drizzle/schema.ts` já armazena link de afiliado, nome de loja, provedor/URL de origem, ativação do monitor, disponibilidade e horários. Esta mudança não exige novo campo nem migração.
+- `server/marketplaces/` define a interface `MarketplaceProvider`, o registro de adaptadores e a implementação atual do Mercado Livre. Um adaptador futuro só poderá ser adicionado com origem, autenticação, API/feed oficial e validação próprios.
+- `server/productMonitor.ts`, `server/db.ts` e `server/routers.ts` mantêm o worker e o fluxo atual de monitoramento. Uma mutação administrativa dedicada atualizará apenas os campos de origem/monitor do produto, preservando o `affiliateUrl`, o preço, Pix, parcelas e outras condições comerciais.
+- `client/src/pages/AdminPage.tsx` fica dedicada ao cadastro, edição, remoção e link de afiliado. A área informa que aceita Shopee e outras lojas, mostra o domínio reconhecido apenas como auxílio visual e preserva o destino informado.
+- `client/src/pages/AdminMonitoringPage.tsx` concentra conexão Mercado Livre, agendamento, lista de produtos, URL canônica, ativação/desativação, status e verificação manual. A rota `/admin/monitoramento` mantém a autenticação de administrador e usa os procedimentos server-side protegidos existentes.
+- `client/src/App.tsx` registra a rota e `client/public/manus-routes.json` declara o novo caminho. O retorno do OAuth Mercado Livre volta à página de monitoramento.
+- `shared/affiliate-url.ts` centraliza validação HTTPS e reconhecimento informativo de domínios conhecidos, com testes que cobrem Shopee, outra loja HTTPS, host falso e protocolo inseguro. O reconhecimento não altera a URL.
 
 ## Dados e compatibilidade
 
-A migração é exclusivamente aditiva; produtos atuais continuam sem monitor e mantêm todos os valores e links. `isActive` continua representando visibilidade escolhida pelo administrador e não será alterado automaticamente por erro de consulta. A URL de afiliado não é resolvida/visitada pelo servidor, evitando SSRF e preservando seu tracking. Só se aceita uma URL/ID oficial compatível com o adaptador; para um novo e-commerce sem adaptador, o cadastro continua manual até essa integração ser adicionada. O histórico de preços de um produto é removido na mesma transação quando o administrador exclui esse produto.
+Não haverá migração nem backfill: os produtos atuais mantêm links, preços, condições, imagem e estado de monitoramento. A edição de um produto no cadastro preservará as configurações de monitor existentes; somente a página de monitoramento poderá alterá-las. Atualizar monitoramento não altera `pricePix`/`pixPrice`, parcelas, juros, preço manual ou destino de afiliado.
+
+O reconhecimento da plataforma não transforma URLs nem determina `sourceProvider`. Uma URL Shopee é válida como destino de afiliado, mas não como fonte de monitoramento até existir adaptador Shopee oficial. Produtos sem adaptador continuam editáveis manualmente e nunca serão consultados por scraping genérico.
 
 A callback da aplicação Mercado Livre usa `https://vitrineml-ecps2ye7.manus.space/api/oauth/mercadolivre/callback`. Em produção, o administrador inicia a conexão e habilita o job; o ambiente Preview não tenta criar tarefas de produção.
 
-O banco Webdev é compartilhado entre desenvolvimento e produção; a migração precisa preservar os registros existentes. Testes devem mockar as respostas HTTP do marketplace e não gravar dados reais no banco compartilhado.
+O banco Webdev é compartilhado entre desenvolvimento e produção; a implementação e os testes não devem escrever nem apagar produtos reais. Testes de APIs externas usam respostas mockadas.
 
 ## Preparação manual para Canais do WhatsApp
 
@@ -38,9 +46,7 @@ A área administrativa lista produtos com preparação `prepared` e `published_m
 
 Desativar o caminho anterior de envio automático: remover o envio Graph API, as retentativas/Heartbeat de anúncios em grupo, seu callback e os controles de credenciais/agendamento. Manter somente as funções Heartbeat de monitoramento de produtos. Como a fila e o agendamento atuais foram verificados sem registros, a migração necessária é aditiva e não precisa transformar dados existentes.
 
-Links absolutos usam `ENV.publicSiteOrigin`, com fallback explícito para `https://vitrineml-ecps2ye7.manus.space/`, verificado como HTTP 200 em 2 nov. 2026. O domínio pretendido `https://vitrine-ecps2ye7.manus.space/` ainda retorna HTTP 404 e não será usado até funcionar. Callbacks OAuth, metadados e domínio do site não são alterados nesta tarefa.
-
-Os módulos afetados são `drizzle/schema.ts` e uma migração aditiva; `server/db.ts` e `server/routers.ts` para persistência e autorização; `shared/whatsapp-announcement.ts` para formatação pura compartilhada; `client/src/pages/AdminPage.tsx` para visualização e ações; e `server/_core/index.ts` para retirar somente o callback antigo de mensagens. O módulo do sender de grupos e a dependência de conversão de imagem são removidos se não tiverem outros usos. Os testes cobrem composição do texto e condições opcionais; o link público e a exclusão do afiliado são cobertos por teste, enquanto a idempotência decorre da transação e do índice único. Nenhum teste envia mensagens nem grava dados reais de produto.
+Links absolutos usam `ENV.publicSiteOrigin`, com fallback explícito para `https://vitrineml-ecps2ye7.manus.space/`, verificado como HTTP 200 em 2 nov. 2026. O domínio pretendido `https://vitrine-ecps2ye7.manus.space/` ainda retorna HTTP 404 e não será usado até funcionar. Callbacks OAuth, metadados e domínio do site não são alterados nesta tarefa, exceto o caminho interno pós-OAuth, que passa a `/admin/monitoramento`.
 
 ## Design
 
@@ -48,8 +54,8 @@ Reutilizar o estilo de administração e de catálogo já existente: mesmos rót
 
 ## Estrutura principal do projeto
 
-- `client/src/`: formulário administrativo, catálogo, detalhe do produto e componentes de preço/disponibilidade.
+- `client/src/`: catálogo público, formulário administrativo e página protegida de monitoramento.
 - `server/`: tRPC, autorização administrativa, consultas/mutações, adaptadores Mercado Livre, OAuth e sincronização Heartbeat.
-- `drizzle/`: schema MySQL e migrações aditivas.
-- `shared/`: tipos e validações puras compartilhadas entre interface e backend.
+- `drizzle/`: schema MySQL e migrações aditivas já existentes; esta mudança não cria migration.
+- `shared/`: preços, URLs/validação de afiliados, disponibilidade e tipos compartilhados.
 - `TODO.md`: critérios de produto e estado de execução; `plan.md`: decisões técnicas e interação.

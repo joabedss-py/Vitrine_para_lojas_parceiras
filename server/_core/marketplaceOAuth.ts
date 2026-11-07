@@ -29,7 +29,7 @@ function safeEqual(left: string, right: string) {
 
 function redirectToAdmin(res: Response, status: "connected" | "error" | "cancelled" | "unavailable") {
   res.setHeader("Cache-Control", "no-store");
-  res.redirect(302, `/admin?mercadolivre=${status}`);
+  res.redirect(302, `/admin/monitoramento?mercadolivre=${status}`);
 }
 
 function clearStateCookie(res: Response) {

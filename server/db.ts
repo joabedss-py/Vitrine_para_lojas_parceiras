@@ -4,6 +4,7 @@ import type { InsertMarketplaceConnection, InsertProduct, InsertUser } from "../
 import { marketplaceConnections, productPriceHistory, products, scheduledJobs, users, whatsappProductAnnouncements } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { PRODUCT_MONITOR_MAX_FAILURE_ATTEMPTS } from "../shared/product-monitor";
+import { buildProductMonitorSettingsPatch, type ProductMonitorSettings } from "./productMonitorSettings";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -196,7 +197,7 @@ export async function createProductWithChannelAnnouncement(product: InsertProduc
 
 export async function updateProductWithChannelAnnouncement(
   id: number,
-  product: Omit<InsertProduct, "id" | "createdAt">,
+  product: Omit<InsertProduct, "id" | "createdAt" | "updatedAt" | "sourceProvider" | "sourceUrl" | "monitorEnabled" | "availabilityStatus" | "lastCheckedAt" | "nextCheckAt" | "lastSyncError" | "syncFailureCount">,
   buildAnnouncementText: (productId: number) => string,
 ) {
   const db = await requireDb();
@@ -235,6 +236,28 @@ export async function updateProductWithChannelAnnouncement(
     } else {
       await tx.insert(whatsappProductAnnouncements).values({ productId: id, ...preparedFields });
     }
+  });
+}
+
+export async function updateProductMonitorSettings(
+  id: number,
+  settings: ProductMonitorSettings,
+  resumeNow = false,
+): Promise<"updated" | "not_found"> {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const [existing] = await tx.select({
+      sourceProvider: products.sourceProvider,
+      sourceUrl: products.sourceUrl,
+      monitorEnabled: products.monitorEnabled,
+    }).from(products).where(eq(products.id, id)).for("update").limit(1);
+    if (!existing) return "not_found";
+
+    const patch = buildProductMonitorSettingsPatch(existing, settings, resumeNow);
+    if (!patch) return "updated";
+    await tx.update(products).set(patch).where(eq(products.id, id));
+
+    return "updated";
   });
 }
 

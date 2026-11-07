@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { comparePriceStrings, isValidPriceString, normalizePriceString } from "../shared/price";
+import { isSecureAffiliateUrl } from "../shared/affiliate-url";
 import { buildProductAnnouncementText } from "../shared/whatsapp-announcement";
 import { storagePut } from "./storage";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -21,15 +22,6 @@ const priceInput = z.string().trim()
   .transform(normalizePriceString);
 const optionalPriceInput = z.union([z.literal(""), z.null(), priceInput])
   .transform(value => value === "" ? null : value);
-
-function isSecureAffiliateUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && Boolean(url.hostname) && !url.username && !url.password;
-  } catch {
-    return false;
-  }
-}
 
 const productFieldsBase = z.object({
   title: z.string().trim().min(1).max(180),
@@ -67,32 +59,51 @@ function validateProductPricing(
   }
 }
 
-function validateProductMonitor(
-  fields: Pick<z.output<typeof productFieldsBase>, "sourceProvider" | "sourceUrl" | "monitorEnabled">,
+const catalogProductFieldsBase = productFieldsBase.omit({ sourceProvider: true, sourceUrl: true, monitorEnabled: true });
+export const catalogProductFields = catalogProductFieldsBase
+  .superRefine(validateProductPricing)
+  .transform(fields => ({ ...fields, sourceProvider: "manual", sourceUrl: null, monitorEnabled: false }));
+export const updateProductFields = catalogProductFieldsBase.extend({ id: z.number().int().positive() }).superRefine(validateProductPricing);
+
+function validateMonitorSettings(
+  fields: { sourceProvider: string; sourceUrl: string | null; monitorEnabled: boolean; resumeNow: boolean },
   context: z.RefinementCtx,
 ) {
-  if (!fields.monitorEnabled) return;
+  if (fields.resumeNow && !fields.monitorEnabled) {
+    context.addIssue({ code: "custom", path: ["monitorEnabled"], message: "Ative o monitor para retomá-lo." });
+  }
   if (fields.sourceProvider === "manual") {
-    context.addIssue({ code: "custom", path: ["sourceProvider"], message: "Escolha uma loja com adaptador de monitoramento." });
+    if (fields.monitorEnabled) context.addIssue({ code: "custom", path: ["sourceProvider"], message: "Escolha uma loja com adaptador de monitoramento." });
+    if (fields.sourceUrl) context.addIssue({ code: "custom", path: ["sourceUrl"], message: "Sem monitor automático, deixe a origem canônica vazia." });
     return;
   }
+
+  let provider: ReturnType<typeof getMarketplaceProvider>;
+  try {
+    provider = getMarketplaceProvider(fields.sourceProvider);
+  } catch {
+    context.addIssue({ code: "custom", path: ["sourceProvider"], message: "Este provedor não tem adaptador de monitoramento disponível." });
+    return;
+  }
+
   if (!fields.sourceUrl) {
-    context.addIssue({ code: "custom", path: ["sourceUrl"], message: "Informe a URL original do produto, separada do link de afiliado." });
+    if (fields.monitorEnabled) context.addIssue({ code: "custom", path: ["sourceUrl"], message: "Informe a URL canônica da origem, separada do link de afiliado." });
     return;
   }
   try {
-    getMarketplaceProvider(fields.sourceProvider).parseItemId(fields.sourceUrl);
+    provider.parseItemId(fields.sourceUrl);
   } catch {
     context.addIssue({ code: "custom", path: ["sourceUrl"], message: "Informe uma URL canônica válida da loja escolhida." });
   }
 }
 
-function validateProductFields(fields: z.output<typeof productFieldsBase>, context: z.RefinementCtx) {
-  validateProductPricing(fields, context);
-  validateProductMonitor(fields, context);
-}
-
-const productFields = productFieldsBase.superRefine(validateProductFields);
+const monitorSettingsFields = z.object({
+  id: z.number().int().positive(),
+  sourceProvider: z.string().trim().min(1).max(40),
+  sourceUrl: z.union([z.string().trim().max(2048), z.literal(""), z.null()]).transform(value => value || null),
+  monitorEnabled: z.boolean(),
+  resumeNow: z.boolean().optional().default(false),
+}).superRefine(validateMonitorSettings);
 
 function isProductImagePath(value: string) {
   return value.startsWith("/manus-storage/") &&
@@ -186,6 +197,22 @@ export const appRouter = router({
     syncProductNow: adminProcedure
       .input(z.object({ id: z.number().int().positive() }))
       .mutation(({ input }) => syncProductNow(input.id)),
+    updateMonitorSettings: adminProcedure
+      .input(monitorSettingsFields)
+      .mutation(async ({ input }) => {
+        const existing = await db.getAdminProductById(input.id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado." });
+        if (input.resumeNow && !existing.monitorEnabled) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Ative o monitor antes de retomá-lo." });
+        }
+        const result = await db.updateProductMonitorSettings(input.id, {
+          sourceProvider: input.sourceProvider,
+          sourceUrl: input.sourceUrl,
+          monitorEnabled: input.monitorEnabled,
+        }, input.resumeNow);
+        if (result === "not_found") throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado." });
+        return { success: true } as const;
+      }),
     uploadImage: adminProcedure
       .input(z.object({
         contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
@@ -204,7 +231,7 @@ export const appRouter = router({
           throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível guardar a imagem. Tente novamente." });
         }
       }),
-    create: adminProcedure.input(productFields).mutation(async ({ input }) => {
+    create: adminProcedure.input(catalogProductFields).mutation(async ({ input }) => {
       const created = await db.createProductWithChannelAnnouncement(input, productId => {
         const productUrl = new URL(`/produto/${productId}/`, ENV.publicSiteOrigin).toString();
         return buildProductAnnouncementText(input, productUrl);
@@ -212,25 +239,14 @@ export const appRouter = router({
       return { id: created.id, announcementStatus: created.announcementPrepared ? "prepared" as const : "inactive" as const };
     }),
     update: adminProcedure
-      .input(productFieldsBase.extend({ id: z.number().int().positive() }).superRefine(validateProductFields))
+      .input(updateProductFields)
       .mutation(async ({ input }) => {
         const { id, ...fields } = input;
         const existing = await db.getAdminProductById(id);
         if (!existing) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado" });
         }
-        const sourceChanged = existing.sourceProvider !== fields.sourceProvider ||
-          existing.sourceUrl !== fields.sourceUrl || existing.monitorEnabled !== fields.monitorEnabled;
-        const updatedProduct = {
-          ...fields,
-          ...(sourceChanged ? {
-            availabilityStatus: "unknown" as const,
-            lastCheckedAt: null,
-            nextCheckAt: fields.monitorEnabled ? new Date() : null,
-            lastSyncError: null,
-            syncFailureCount: 0,
-          } : {}),
-        };
+        const updatedProduct = fields;
         await db.updateProductWithChannelAnnouncement(id, updatedProduct, productId => {
           const productUrl = new URL(`/produto/${productId}/`, ENV.publicSiteOrigin).toString();
           return buildProductAnnouncementText(updatedProduct, productUrl);

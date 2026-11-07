@@ -364,3 +364,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .channel-announcement-actions { align-items: stretch; flex-direction: column; }
   .channel-announcement-actions .small-button { justify-content: center; min-height: 38px; }
 }
+
+
+.monitor-provider-note { margin: 18px 0 26px; padding: 17px 20px; background: #fbfaf7; }
+.monitor-provider-note h2 { margin-bottom: 7px; }
+.monitor-provider-note p { margin: 0; color: #7c8587; font-size: 12px; line-height: 1.6; }
+.monitor-products-panel { margin-bottom: 28px; }
+.monitor-product-list { display: grid; gap: 14px; }
+.monitor-product-card { display: grid; gap: 13px; padding: 15px; border: 1px solid #eeece8; border-radius: 9px; background: #fff; }
+.monitor-product-heading { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 12px; }
+.monitor-product-heading .admin-thumb { width: 58px; height: 58px; }
+.monitor-product-heading h3 { margin: 0; color: var(--primary); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.monitor-product-heading p { margin: 4px 0 0; color: #879092; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.monitor-product-heading .admin-row-status { margin-top: 5px; }
+.monitor-product-fields { display: grid; grid-template-columns: minmax(180px, .5fr) minmax(260px, 1fr); gap: 12px; }
+.monitor-product-fields .form-field { min-width: 0; }
+.monitor-product-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 0; border-top: 1px solid #f0eee9; border-bottom: 1px solid #f0eee9; }
+.monitor-product-status .form-checkbox { font-size: 11px; }
+.monitor-product-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.monitor-product-actions .small-button:disabled { cursor: not-allowed; opacity: .55; }
+.monitor-product-card .monitor-generic-error { color: #a53e2d; font-size: 10px; line-height: 1.4; }
+@media (max-width: 620px) {
+  .monitor-provider-note { padding: 15px; }
+  .monitor-product-fields { grid-template-columns: 1fr; }
+  .monitor-product-actions { display: grid; grid-template-columns: 1fr; }
+  .monitor-product-actions .small-button { justify-content: center; min-height: 38px; }
+}

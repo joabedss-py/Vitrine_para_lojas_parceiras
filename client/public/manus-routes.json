@@ -1,1 +1,1 @@
-{"routes":[{"path":"/","title":"Vitrine"},{"path":"/produto/:id","title":"Detalhes do produto por código"},{"path":"/produto/:id/:slug","title":"Compatibilidade com links antigos de produto"},{"path":"/admin","title":"Administração do catálogo"}]}
+{"routes":[{"path":"/","title":"Vitrine"},{"path":"/produto/:id","title":"Detalhes do produto por código"},{"path":"/produto/:id/:slug","title":"Compatibilidade com links antigos de produto"},{"path":"/admin","title":"Administração do catálogo"},{"path":"/admin/monitoramento","title":"Monitoramento de produtos"}]}
